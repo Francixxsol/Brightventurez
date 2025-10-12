@@ -3,9 +3,6 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&"
-DEBUG ='false'
-ALLOWED_HOSTS = [ '.vercel.app', 'your-app-name.onrender.com', '127.0.0.1', 'localhost']
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -120,3 +117,20 @@ if os.environ.get("VERCEL"):
 # Tell Django where to find static in production
 if os.environ.get("VERCEL"):
     STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+
+import os
+import dj_database_url
+
+# SECURITY
+SECRET_KEY = os.environ.get('SECRET_KEY', 'upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '.onrender.com').split(',')
+
+# DATABASE
+DATABASES = {
+    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
+}
+
+# STATIC FILES
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
