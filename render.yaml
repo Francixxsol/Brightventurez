@@ -2,24 +2,21 @@ services:
   - type: web
     name: brightventurez
     env: python
+    region: oregon
     plan: free
+    branch: main
     buildCommand: |
       pip install -r requirements.txt
       python manage.py collectstatic --noinput
-      python manage.py migrate
-    startCommand: gunicorn brightventurez.wsgi:application
+    startCommand: gunicorn brightventurez.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
-      - key: SECRET_KEY
-        value: upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&
+      - key: DJANGO_SECRET_KEY
+        value: "upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&"
       - key: DEBUG
-        value: False
+        value: "False"
       - key: ALLOWED_HOSTS
-        value: .onrender.com
+        value: "brightventurez.onrender.com"
       - key: DATABASE_URL
-        fromDatabase:
-          name: brightventurez-db
-          property: connectionString
+        value: "postgresql://brightventurez_db_user:a9otz4Yjo9H4hnuiEwjjceq76syAUdRV@dpg-d3lu2fje5dus73f3m000-a/brightventurez_db"
 
-databases:
-  - name: brightventurez-db
-    plan: free
+
