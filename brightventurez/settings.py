@@ -124,7 +124,6 @@ import dj_database_url
 # SECURITY
 SECRET_KEY = os.environ.get('SECRET_KEY', 'upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&')
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'brightventurez.onrender.com').split(',')
 import dj_database_url
 import os
 
@@ -136,7 +135,7 @@ DATABASES = {
     )
 }
 
-# STATIC FILES
+ALLOWED_HOSTS = ['brightventurez.onrender.com']
+
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
