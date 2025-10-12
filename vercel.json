@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "brightventurez/wsgi.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "brightventurez/wsgi.py"
+    }
+  ]
+}

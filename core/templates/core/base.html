@@ -1,0 +1,81 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Bright Venturez</title>
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script defer src="{% static 'js/app.js' %}"></script>
+  <style>
+    body.dark { background: #0d0d1a; color: #e0e0ff; font-family: sans-serif; }
+    .topbar { padding: 1rem; background: #1a1b3a; display: flex; justify-content: space-between; align-items: center; }
+    .brand { font-weight: bold; font-size: 1.5rem; color: #fff; }
+    .brand .accent { color: #3b3dbf; }
+    .nav a { margin-right: 1rem; color: #cfcfff; text-decoration: none; font-weight: 500; }
+    .nav a:hover { color: #fff; }
+    .btn.primary { background: #3b3dbf; color: #fff; padding: 6px 14px; border-radius: 6px; text-decoration: none; }
+    .btn.ghost { background: transparent; border: 1px solid #cfcfff; color: #cfcfff; padding: 6px 12px; border-radius: 6px; text-decoration: none; }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 1rem; }
+    .wallet-info { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 8px; background: #1a1b3a; color: #e0e0ff; font-weight: bold; }
+    .fund-btn { padding: 4px 10px; border-radius: 6px; font-weight: 600; background: #3b3dbf; color: #fff; text-decoration: none; transition: 0.3s; }
+    .fund-btn:hover { background: #292a7d; }
+    .card { background: #1a1b3a; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+    .alert { padding: 8px; margin-bottom: 0.5rem; background: #292a7d; border-radius: 5px; }
+    .carousel { display: flex; overflow-x: auto; gap: 1rem; padding: 1rem 0; }
+    .review-card { min-width: 200px; background: #292a7d; padding: 0.8rem; border-radius: 8px; }
+    .review-name { font-weight: bold; margin-bottom: 4px; }
+    footer.footer { padding: 1rem; text-align: center; background: #1a1b3a; margin-top: 2rem; }
+  </style>
+</head>
+<body class="dark">
+  <header class="topbar">
+    <div class="brand">Bright <span class="accent">Venturez</span></div>
+    <nav class="nav">
+      {% for link in nav_links %}
+        <a href="{% url link.url_name %}">{{ link.title }}</a>
+      {% endfor %}
+      {% if request.user.is_authenticated %}
+        <span class="muted">Hi, {{ request.user.first_name|default:request.user.username }}</span>
+        <a class="btn ghost" href="{% url 'change_password' %}">Change Password</a>
+        <a class="btn ghost" href="{% url 'logout' %}">Logout</a>
+
+        <div class="wallet-info">
+          Balance: ₦<span id="wallet-balance">{{ wallet_balance }}</span>
+          <a class="fund-btn" href="{% url 'fund_wallet' %}">Fund Wallet</a>
+        </div>
+      {% else %}
+        <a class="btn ghost" href="{% url 'login' %}">Login</a>
+        <a class="btn primary" href="{% url 'register' %}">Create Account</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <main class="wrap">
+    {% for m in messages %}
+      <div class="alert">{{ m }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="muted">All rights reserved Bright Venturez 2025</div>
+    <div class="muted">Dark Indigo UI</div>
+  </footer>
+
+  <!-- Auto-refresh wallet balance -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      function updateWallet() {
+        fetch("{% url 'wallet_balance_api' %}")
+          .then(res => res.json())
+          .then(data => {
+            if (data.balance) document.getElementById("wallet-balance").textContent = data.balance;
+          })
+          .catch(err => console.error("Wallet update failed:", err));
+      }
+      setInterval(updateWallet, 10000);
+    });
+  </script>
+</body>
+</html>

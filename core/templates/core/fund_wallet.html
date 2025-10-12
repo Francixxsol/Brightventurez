@@ -1,0 +1,11 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Fund Wallet</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><input type="number" name="amount" placeholder="Enter amount (₦)" required></div>
+    <button class="btn primary" type="submit">Proceed to Paystack</button>
+  </form>
+</section>
+{% endblock %}

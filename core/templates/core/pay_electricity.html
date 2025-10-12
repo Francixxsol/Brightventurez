@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Pay Electricity</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><input type="text" name="meter" placeholder="Meter number" required></div>
+    <div class="field"><input type="number" name="amount" placeholder="Amount (₦)" required></div>
+    <button class="btn primary" type="submit">Pay Electricity</button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card hero">
+  <h1>Cheaper Data. Faster VTU. Data → Cash.</h1>
+  <p class="sub">Buy data & airtime, convert airtime to cash, or sell your data for money.</p>
+  <p class="sub humor">
+    "From bytes to bucks, from airtime to vibes —<br>
+    Bright Venturez fuels your digital lives."
+  </p>
+  <div class="row gap">
+    <a class="btn primary" href="{% url 'register' %}">🚀 Get Started</a>
+    <a class="btn ghost" href="{% url 'buy_data' %}">📱 Buy Data</a>
+  </div>
+</section>
+
+<section class="card">
+  <h3>User Reviews 🌟</h3>
+  <div class="carousel" id="reviewsCarousel">
+    {% for r in reviews %}
+      <div class="review-card">
+        <div class="review-name">🙋 {{ r.name }}</div>
+        <div class="review-text">"{{ r.text }}"</div>
+        <p class="review-fun">✨ "Data so cheap, I nearly cried... Bright Venturez be my daily guide!"</p>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

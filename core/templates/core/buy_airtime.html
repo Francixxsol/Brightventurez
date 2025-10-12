@@ -1,0 +1,30 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Buy Airtime</h2>
+<p><strong>Wallet Balance:</strong> ₦{{ wallet.balance }}</p>
+
+<form method="POST">
+  {% csrf_token %}
+  
+  <label>Network:</label>
+  <select name="network" required>
+    <option value="">-- Select Network --</option>
+    <option value="MTN">MTN</option>
+    <option value="AIRTEL">AIRTEL</option>
+    <option value="GLO">GLO</option>
+    <option value="9MOBILE">9mobile</option>
+  </select>
+
+  <label>Phone Number:</label>
+  <input type="text" name="phone" required>
+
+  <label>Amount:</label>
+  <input type="number" name="amount" step="0.01" required>
+
+  <button type="submit">Buy Airtime</button>
+</form>
+
+{% for message in messages %}
+  <p>{{ message }}</p>
+{% endfor %}

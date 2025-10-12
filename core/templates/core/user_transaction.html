@@ -1,0 +1,13 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card">
+  <h2>My Transactions</h2>
+  {% for tx in transactions %}
+    <div class="history-item">
+      {{ tx.created_at }} • {{ tx.trans_type }} • ₦{{ tx.amount }} • {{ tx.status }}
+    </div>
+  {% empty %}
+    <div class="muted">No transactions yet.</div>
+  {% endfor %}
+</section>
+{% endblock %}

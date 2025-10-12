@@ -1,0 +1,25 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card hero">
+  <h1>Welcome {{ request.user.first_name|default:request.user.username }}</h1>
+  <p class="sub">Cheaper Data. Faster VTU. Data → Cash. Wallet: ₦{{ wallet_balance }}</p>
+  <div class="row gap">
+    <a class="btn primary" href="{% url 'buy_data' %}">Buy Data</a>
+    <a class="btn primary" href="{% url 'buy_airtime' %}">Buy Airtime</a>
+    <a class="btn primary" href="{% url 'sell_data' %}">Sell Data</a>
+    <a class="btn ghost" href="{% url 'fund_wallet' %}">Fund Wallet</a>
+  </div>
+</section>
+
+<section class="card">
+  <h3>User Reviews</h3>
+  <div class="carousel" id="reviewsCarousel">
+    {% for r in reviews %}
+      <div class="review-card">
+        <div class="review-name">{{ r.name }}</div>
+        <div class="review-text">{{ r.text }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
