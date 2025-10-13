@@ -8,8 +8,8 @@
     Bright Venturez fuels your digital lives."
   </p>
   <div class="row gap">
-    <a class="btn primary" href="{% url 'register' %}">🚀 Get Started</a>
-    <a class="btn ghost" href="{% url 'buy_data' %}">📱 Buy Data</a>
+    <a class="btn primary" href="{% url 'core:register' %}">🚀 Get Started</a>
+    <a class="btn ghost" href="{% url 'core:buy_data' %}">📱 Buy Data</a>
   </div>
 </section>
 
@@ -19,8 +19,7 @@
     {% for r in reviews %}
       <div class="review-card">
         <div class="review-name">🙋 {{ r.name }}</div>
-        <div class="review-text">"{{ r.text }}"</div>
-        <p class="review-fun">✨ "Data so cheap, I nearly cried... Bright Venturez be my daily guide!"</p>
+        <div class="review-text">{{ r.text }}</div>
       </div>
     {% endfor %}
   </div>
