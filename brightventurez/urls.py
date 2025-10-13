@@ -6,7 +6,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include(("core.urls", "core"), namespace="core")),
-    path("accounts/", include("django.contrib.auth.urls")),  # Django's default login/logout/password views
+    path("accounts/", include("django.contrib.auth.urls")),  # <--- this is key
 ]
 
 if settings.DEBUG:
