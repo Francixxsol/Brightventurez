@@ -5,8 +5,12 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+
+    # Core app URLs
     path("", include(("core.urls", "core"), namespace="core")),
-    path("accounts/", include("django.contrib.auth.urls")),  # <--- this is key
+
+    # Django's built-in authentication views (for login, logout, password management)
+    path("accounts/", include("django.contrib.auth.urls")),
 ]
 
 if settings.DEBUG:
