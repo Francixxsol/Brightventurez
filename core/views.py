@@ -1,24 +1,38 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import Wallet, Transaction, PriceTable, SellRequest
-from .utils.wallet_helpers import get_or_create_wallet
+from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from django.conf import settings
+
+from .models import Wallet, Transaction, PriceTable, SellRequest, DataPlan, VirtualPlan, ProviderPlan, DataTransaction
+from .forms import RegisterForm, SellDataRequestForm
+from .utils.wallet_helpers import get_or_create_wallet
 from .utils.vtu_mapping import VTU_DATA_CODES
-from .forms import RegisterForm 
+from .utils import buy_data as process_data_purchase
+from .utils.vtu_api import send_vtu_request
+
+import uuid
+import requests
+
+# ---------- Home ----------
 @csrf_exempt
 def home(request):
     return render(request, "core/home.html")
 
 # ---------- Register ----------
 def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("core:dashboard")
     if request.method == "POST":
         form = RegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
-            Wallet.objects.create(user=user)  # create wallet automatically
+            if not Wallet.objects.filter(user=user).exists():
+                Wallet.objects.create(user=user)
             messages.success(request, "Account created! You can now login.")
-            return redirect("login")
+            return redirect("core:login")
     else:
         form = RegisterForm()
     return render(request, "core/register.html", {"form": form})
@@ -31,7 +45,7 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user:
             login(request, user)
-            return redirect("dashboard")
+            return redirect("core:dashboard")
         messages.error(request, "Invalid credentials")
     return render(request, "core/login.html")
 
@@ -41,65 +55,45 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     messages.info(request, "Logged out successfully")
-    return redirect("login")
+    return redirect("core:login")
 
-# ---------- Sell Data ----------
+# ---------- Dashboard ----------
 @csrf_exempt
 @login_required
-def sell_data(request):
-    if request.method == "POST":
-        form = SellDataRequestForm(request.POST)
+def dashboard(request):
+    wallet = Wallet.objects.get(user=request.user)
+    transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:10]
+    return render(request, 'core/dashboard.html', {
+        'wallet': wallet,
+        'transactions': transactions
+    })
+
+# ---------- Change Password ----------
+from django.contrib.auth.forms import PasswordChangeForm
+from django.contrib.auth import update_session_auth_hash
+
+@csrf_exempt
+@login_required
+def change_password(request):
+    if request.method == 'POST':
+        form = PasswordChangeForm(request.user, request.POST)
         if form.is_valid():
-            sell_request = form.save(commit=False)
-            sell_request.user = request.user
-            sell_request.save()
-            messages.success(request, "Sell request submitted. Admin will review and credit your wallet.")
-            return redirect("sell_data")
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, 'Password updated successfully!')
+            return redirect('core:dashboard')
+        else:
+            messages.error(request, 'Please correct the errors below.')
     else:
-        form = SellDataRequestForm()
+        form = PasswordChangeForm(request.user)
+    return render(request, 'core/change_password.html', {'form': form})
 
-    user_requests = SellRequest.objects.filter(user=request.user).order_by("-created_at")
-    return render(request, "core/sell_data.html", {"form": form, "user_requests": user_requests})
-
-# ---------- Admin Approves & Credits Wallet ----------
+# ---------- User Transactions ----------
 @csrf_exempt
 @login_required
-def approve_sell_request(request, request_id):
-    if not request.user.is_staff:
-        messages.error(request, "You are not authorized.")
-        return redirect("dashboard")
-
-    sell_req = SellRequest.objects.get(id=request_id)
-    if not sell_req.approved:
-        sell_req.approved = True
-        sell_req.save()
-        # Credit wallet
-        wallet = Wallet.objects.get(user=sell_req.user)
-        wallet.balance += sell_req.amount
-        wallet.save()
-        # Record transaction
-        Transaction.objects.create(
-            user=sell_req.user,
-            amount=sell_req.amount,
-            type="credit",
-            description=f"Approved sell data request #{sell_req.id}"
-        )
-        messages.success(request, f"Sell request approved and ₦{sell_req.amount} credited to {sell_req.user.username}.")
-    return redirect("sell_requests_list")
-
-# ---------- List all sell requests (admin) ----------
-@csrf_exempt
-@login_required
-def sell_requests_list(request):
-    if not request.user.is_staff:
-        messages.error(request, "Unauthorized")
-        return redirect("dashboard")
-    requests = SellRequest.objects.all().order_by("-created_at")
-    return render(request, "core/sell_requests_list.html", {"requests": requests})
-
-
-import requests
-from django.conf import settings
+def user_transactions(request):
+    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")
+    return render(request, "core/user_transactions.html", {"transactions": transactions})
 
 # ---------- Fund Wallet ----------
 @csrf_exempt
@@ -147,100 +141,85 @@ def verify_payment(request):
                 description=f"Wallet funded via Paystack (Ref: {reference})"
             )
             messages.success(request, f"Wallet funded with ₦{amount}")
-            return redirect("dashboard")
+            return redirect("core:dashboard")
     messages.error(request, "Payment verification failed")
-    return redirect("fund_wallet")
+    return redirect("core:fund_wallet")
 
-from django.contrib.auth.forms import PasswordChangeForm
-from django.contrib.auth import update_session_auth_hash
-
+# ---------- Sell Data ----------
 @csrf_exempt
 @login_required
-def change_password(request):
-    if request.method == 'POST':
-        form = PasswordChangeForm(request.user, request.POST)
+def sell_data(request):
+    if request.method == "POST":
+        form = SellDataRequestForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            # Keeps user logged in after password change
-            update_session_auth_hash(request, user)
-            messages.success(request, 'Password updated successfully!')
-            return redirect('dashboard')
-        else:
-            messages.error(request, 'Please correct the errors below.')
+            sell_request = form.save(commit=False)
+            sell_request.user = request.user
+            sell_request.save()
+            messages.success(request, "Sell request submitted. Admin will review and credit your wallet.")
+            return redirect("core:sell_data")
     else:
-        form = PasswordChangeForm(request.user)
-    return render(request, 'core/change_password.html', {'form': form})
+        form = SellDataRequestForm()
+    user_requests = SellRequest.objects.filter(user=request.user).order_by("-created_at")
+    return render(request, "core/sell_data.html", {"form": form, "user_requests": user_requests})
 
-from django.contrib.auth.decorators import login_required
-from .models import Wallet, Transaction
-
+# ---------- Approve Sell Request (Admin) ----------
 @csrf_exempt
 @login_required
-def dashboard(request):
-    wallet = Wallet.objects.get(user=request.user)
-    transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:10]  # last 10 transactions
-    return render(request, 'core/dashboard.html', {
-        'wallet': wallet,
-        'transactions': transactions
-    })
-# ---------- User Transactions ----------
+def approve_sell_request(request, request_id):
+    if not request.user.is_staff:
+        messages.error(request, "You are not authorized.")
+        return redirect("core:dashboard")
+    sell_req = SellRequest.objects.get(id=request_id)
+    if not sell_req.approved:
+        sell_req.approved = True
+        sell_req.save()
+        wallet = Wallet.objects.get(user=sell_req.user)
+        wallet.balance += sell_req.amount
+        wallet.save()
+        Transaction.objects.create(
+            user=sell_req.user,
+            amount=sell_req.amount,
+            type="credit",
+            description=f"Approved sell data request #{sell_req.id}"
+        )
+        messages.success(request, f"Sell request approved and ₦{sell_req.amount} credited to {sell_req.user.username}.")
+    return redirect("core:sell_requests")
+
+# ---------- List all sell requests (Admin) ----------
 @csrf_exempt
 @login_required
-def user_transactions(request):
-    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")
-    return render(request, "core/user_transactions.html", {"transactions": transactions})
+def sell_requests_list(request):
+    if not request.user.is_staff:
+        messages.error(request, "Unauthorized")
+        return redirect("core:dashboard")
+    requests = SellRequest.objects.all().order_by("-created_at")
+    return render(request, "core/sell_requests_list.html", {"requests": requests})
 
 # ---------- Buy Data ----------
-import uuid
-import requests
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from .models import Wallet, PriceTable, Transaction
-from .utils import buy_data as process_data_purchase
-
-
 @csrf_exempt
 @login_required
 def buy_data(request):
-    # Get or create the user's wallet
     wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'balance': 0})
-
-    # Get all available data plans
     prices = PriceTable.objects.all()
-
     if request.method == "POST":
         network = request.POST.get("network")
         plan_id = request.POST.get("plan")
         phone_number = request.POST.get("phone")
-
-        # Check if required fields are provided
         if not (network and plan_id and phone_number):
             messages.error(request, "Please fill all required fields.")
-            return redirect("buy_data")
-
-        # Get selected plan
+            return redirect("core:buy_data")
         try:
             plan = PriceTable.objects.get(id=plan_id)
         except PriceTable.DoesNotExist:
             messages.error(request, "Selected data plan does not exist.")
-            return redirect("buy_data")
-
-        amount = plan.my_price  # Your own selling price
-
-        # Check wallet balance
+            return redirect("core:buy_data")
+        amount = plan.my_price
         if wallet.balance < amount:
             messages.error(request, "Insufficient wallet balance. Please fund your wallet.")
-            return redirect("buy_data")
-
-        # Generate transaction reference
+            return redirect("core:buy_data")
         ref = str(uuid.uuid4())[:8]
-
-        # Debit wallet before API call
         wallet.balance -= amount
         wallet.save()
-
         txn = Transaction.objects.create(
             user=request.user,
             amount=amount,
@@ -248,10 +227,8 @@ def buy_data(request):
             description=f"Buying {plan.data_plan} {plan.network} data for ₦{amount}",
             reference=ref,
         )
-
-        # --- Provider API call ---
         try:
-            provider = plan.provider  # assuming PriceTable has provider info
+            provider = plan.provider
             headers = {"Authorization": f"Bearer {provider.api_key}"}
             payload = {
                 "network": network,
@@ -259,16 +236,9 @@ def buy_data(request):
                 "phone": phone_number,
                 "ref": ref,
             }
-
-            res = requests.post(
-                f"{provider.api_base_url}/buy-data",
-                json=payload,
-                headers=headers,
-                timeout=20,
-            )
+            res = requests.post(f"{provider.api_base_url}/buy-data", json=payload, headers=headers, timeout=20)
             data = res.json()
             txn.provider_response = str(data)
-
             if res.status_code == 200 and data.get("status") in ["success", "ok"]:
                 txn.status = "SUCCESS"
                 txn.save()
@@ -278,8 +248,7 @@ def buy_data(request):
                 txn.save()
                 wallet.balance += amount  # refund on failure
                 wallet.save()
-                messages.error(request, f"Transaction failed. Reason: {data.get('message', 'Unknown error')}")
-
+                messages.error(request, f"Transaction failed. Reason: {data.get('message', 'Unknown')}")
         except Exception as e:
             txn.status = "FAILED"
             txn.provider_response = str(e)
@@ -287,10 +256,38 @@ def buy_data(request):
             wallet.balance += amount  # refund on exception
             wallet.save()
             messages.error(request, f"An error occurred: {e}")
-
-        return redirect("buy_data")
-
+        return redirect("core:buy_data")
     return render(request, "core/buy_data.html", {"wallet": wallet, "prices": prices})
+
+# ---------- Buy Airtime ----------
+@csrf_exempt
+@login_required
+def buy_airtime(request):
+    wallet, _ = Wallet.objects.get_or_create(user=request.user, defaults={'balance': 0})
+    if request.method == "POST":
+        network = request.POST.get("network")
+        phone = request.POST.get("phone")
+        amount = request.POST.get("amount")
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            messages.error(request, "Invalid amount entered.")
+            return redirect("core:buy_airtime")
+        if wallet.balance >= amount:
+            wallet.balance -= amount
+            wallet.save()
+            Transaction.objects.create(
+                user=request.user,
+                amount=amount,
+                type="debit",
+                description=f"Bought ₦{amount} airtime for {phone} ({network})"
+            )
+            messages.success(request, f"Airtime purchase successful: ₦{amount} to {phone} ({network})")
+        else:
+            messages.error(request, "Insufficient wallet balance.")
+        return redirect("core:buy_airtime")
+    return render(request, "core/buy_airtime.html", {"wallet": wallet})
+
 # ---------- Wallet Balance API ----------
 @csrf_exempt
 @login_required
@@ -301,135 +298,11 @@ def wallet_balance_api(request):
         "balance": float(wallet.balance),
     }
     return JsonResponse(data)
-# --- AUTO WALLET CREATOR ---
-def get_or_create_wallet(user):
-    wallet, created = Wallet.objects.get_or_create(user=user, defaults={'balance': 0})
-    return wallet
 
-
-# --- BUY AIRTIME --- 
-@csrf_exempt
-@login_required
-def buy_airtime(request):
-    # Get or create the user's wallet
-    wallet, created = Wallet.objects.get_or_create(user=request.user, defaults={'balance': 0})
-
-    if request.method == "POST":
-        network = request.POST.get("network")
-        phone = request.POST.get("phone")
-        amount = request.POST.get("amount")
-
-        # Validate amount
-        try:
-            amount = float(amount)
-        except (TypeError, ValueError):
-            messages.error(request, "Invalid amount entered.")
-            return redirect("buy_airtime")
-
-        # Check wallet balance
-        if wallet.balance >= amount:
-            wallet.balance -= amount
-            wallet.save()
-
-            Transaction.objects.create(
-                user=request.user,
-                amount=amount,
-                type="debit",
-                description=f"Bought ₦{amount} airtime for {phone} ({network})"
-            )
-
-            messages.success(request, f"Airtime purchase successful: ₦{amount} to {phone} ({network})!")
-        else:
-            messages.error(request, "Insufficient wallet balance.")
-
-        return redirect("buy_airtime")
-
-    return render(request, "core/buy_airtime.html", {"wallet": wallet})
-
-from django.http import JsonResponse
-from .models import DataPlan
-import requests
-
-def get_plans(request):
-    network = request.GET.get('network')
-    data_type = request.GET.get('data_type')
-    plans = DataPlan.objects.filter(network=network, data_type=data_type).values('id', 'plan_name', 'size', 'selling_price', 'validity')
-    return JsonResponse(list(plans), safe=False)
-
-from django.shortcuts import render
-from .models import VirtualPlan, ProviderPlan
-
-def data_plans_view(request):
-    virtual_plans = VirtualPlan.objects.filter(is_active=True)
-    provider_plans = ProviderPlan.objects.all()
-    return render(request, "data_plans.html", {
-        "virtual_plans": virtual_plans,
-        "provider_plans": provider_plans
-    })
-
-# app/views.py
-from .utils.vtu_api import send_vtu_request
-from .utils.vtu_mapping import VTU_DATA_CODES
-from .models import Wallet, DataTransaction
-
-def buy_data(request):
-    wallet = Wallet.objects.get(user=request.user)
-
-    if request.method == 'POST':
-        network = request.POST.get('network')
-        data_type = request.POST.get('data_type')
-        plan_code = VTU_DATA_CODES.get(data_type)
-        phone = request.POST.get('phone')
-        amount = float(request.POST.get('amount'))
-
-        if wallet.balance < amount:
-            return JsonResponse({'status': 'failed', 'message': 'Insufficient wallet balance'})
-
-        # Deduct from wallet first
-        wallet.debit(amount)
-
-        # Save transaction
-        txn = DataTransaction.objects.create(
-            user=request.user,
-            network=network,
-            phone_number=phone,
-            amount=amount,
-            plan_name=data_type,
-            status='pending'
-        )
-
-        # --- Call VTU API ---
-        payload = {
-            "service": "data",
-            "coded": plan_code,
-            "phone": phone,
-            "amount": amount,
-            "ref": txn.id,
-        }
-
-        response = send_vtu_request(payload)
-        txn.api_response = str(response)
-
-        if response.get("status") in ["success", "ok"]:
-            txn.status = "success"
-        else:
-            txn.status = "failed"
-            wallet.credit(amount)  # refund if failed
-
-        txn.save()
-
-        return JsonResponse({'status': txn.status, 'message': f'{data_type} purchase {txn.status}'})
-
-    # Default page view
-    return render(request, 'core/buy_data.html', {'wallet': wallet})
-
-from django.http import JsonResponse
-from .models import ProviderPlan
-
+# ---------- Get Plans ----------
 def get_plans(request):
     network = request.GET.get('network')
     category = request.GET.get('category')
-
     plans = ProviderPlan.objects.filter(network=network, category=category)
     data = [
         {
