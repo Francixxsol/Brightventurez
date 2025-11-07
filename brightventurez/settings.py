@@ -11,6 +11,7 @@ ALLOWED_HOSTS = ['brightventurez.onrender.com', 'localhost', '127.0.0.1']
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
+    "django_q",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
@@ -106,4 +107,20 @@ DATA_PAYOUT = {
     "500MB": 80.00,
     "1GB": 240.00,
     "2GB": 450.00,
+}
+
+Q_CLUSTER = {
+    "name": "brightventurez",
+    "workers": 2,
+    "timeout": 90,
+    "retry": 120,
+    "queue_limit": 50,
+    "bulk": 10,
+    "orm": "default",  # Use Django ORM
+}
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-brightventurez-cache',
+    }
 }

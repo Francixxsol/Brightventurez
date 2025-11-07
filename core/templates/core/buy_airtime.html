@@ -1,30 +1,37 @@
 {% extends "core/base.html" %}
+
 {% block content %}
 <section class="card">
   <h2>Buy Airtime</h2>
-<p><strong>Wallet Balance:</strong> ₦{{ wallet.balance }}</p>
+  <p><strong>Wallet Balance:</strong> ₦{{ wallet.balance }}</p>
 
-<form method="POST">
-  {% csrf_token %}
-  
-  <label>Network:</label>
-  <select name="network" required>
-    <option value="">-- Select Network --</option>
-    <option value="MTN">MTN</option>
-    <option value="AIRTEL">AIRTEL</option>
-    <option value="GLO">GLO</option>
-    <option value="9MOBILE">9mobile</option>
-  </select>
+  <form method="POST">
+    {% csrf_token %}
 
-  <label>Phone Number:</label>
-  <input type="text" name="phone" required>
+    <label>Network:</label>
+    <select name="network" required>
+      <option value="">-- Select Network --</option>
+      <option value="MTN">MTN</option>
+      <option value="AIRTEL">AIRTEL</option>
+      <option value="GLO">GLO</option>
+      <option value="9MOBILE">9mobile</option>
+    </select>
 
-  <label>Amount:</label>
-  <input type="number" name="amount" step="0.01" required>
+    <label>Phone Number:</label>
+    <input type="text" name="phone" placeholder="080..." required>
 
-  <button type="submit">Buy Airtime</button>
-</form>
+    <label>Amount:</label>
+    <input type="number" name="amount" step="0.01" min="50" required>
 
-{% for message in messages %}
-  <p>{{ message }}</p>
-{% endfor %}
+    <button type="submit" class="btn primary">Buy Airtime</button>
+  </form>
+
+  {% if messages %}
+    <div class="messages">
+      {% for message in messages %}
+        <p class="alert">{{ message }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
