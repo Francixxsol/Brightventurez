@@ -29,6 +29,7 @@ def home(request):
 # ------------------------------
 # Register
 # ------------------------------
+@csrf_exempt
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("core:dashboard")
@@ -56,7 +57,7 @@ def register_view(request):
 # ------------------------------
 from django_q.tasks import async_task
 from core.tasks import create_wallet_async
-
+@csrf_exempt
 def login_view(request):
     if request.method == "POST":
         username = request.POST.get("username")

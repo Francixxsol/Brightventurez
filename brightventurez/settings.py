@@ -5,7 +5,7 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&')
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = os.environ.get('DEBUG', 'True') 
 ALLOWED_HOSTS = ['brightventurez.onrender.com', 'localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
@@ -124,3 +124,11 @@ CACHES = {
         'LOCATION': 'unique-brightventurez-cache',
     }
 }
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'  # Or your email provider
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_USER')  # Your email
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASS')  # App password if Gmail
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

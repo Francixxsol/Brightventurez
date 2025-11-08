@@ -8,6 +8,7 @@
     <div class="field"><label>Password</label><input type="password" name="password" required></div>
     <button class="btn primary" type="submit">Login</button>
   </form>
+<p class="hint"><a href="{% url 'password_reset' %}">Forgot your password?</a></p>
 <p class="hint">Don't have an account? <a href="{% url 'core:register' %}">Create one</a></p>
 </section>
 {% endblock %}

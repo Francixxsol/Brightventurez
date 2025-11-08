@@ -9,73 +9,149 @@
   <script defer src="{% static 'js/app.js' %}"></script>
   <style>
     body.dark { background: #0d0d1a; color: #e0e0ff; font-family: sans-serif; }
-    .topbar { padding: 1rem; background: #1a1b3a; display: flex; justify-content: space-between; }
+    .topbar { padding: 1rem; background: #1a1b3a; display: flex; justify-content: space-between; align-items: center; }
     .brand { font-weight: bold; font-size: 1.5rem; color: #fff; }
     .brand .accent { color: #3b3dbf; }
     .nav a { margin-right: 1rem; color: #cfcfff; text-decoration: none; font-weight: 500; }
     .nav a:hover { color: #fff; }
-    .btn.primary { background: #3b3dbf; color: #fff; padding: 6px 14px; border-radius: 6px; text-decoration: none; }
-    .btn.ghost { background: transparent; border: 1px solid #cfcfff; color: #cfcfff; padding: 6px 12px; border-radius: 6px; text-decoration: none; }
-    .wrap { max-width: 1000px; margin: 0 auto; padding: 1rem; }
-    .wallet-info { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 6px; background: #292a7d; }
-    .fund-btn { padding: 4px 10px; border-radius: 6px; font-weight: 600; background: #3b3dbf; color: #fff; text-decoration: none; }
+    .btn.primary { background: #3b3dbf; color: #fff; padding: 6px 14px; border-radius: 6px; }
+    .btn.ghost { background: transparent; border: 1px solid #cfcfff; color: #cfcfff; padding: 6px 12px; border-radius: 6px; }
+    .wallet-info { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius:6px; }
+    .fund-btn { padding: 4px 10px; border-radius: 6px; font-weight: 600; background: #3b3dbf; color:#fff; text-decoration:none; }
     .fund-btn:hover { background: #292a7d; }
-    .card { background: #1a1b3a; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 8px #0002; }
+    .card { background: #1a1b3a; padding: 1rem; margin-bottom: 1rem; border-radius: 8px; }
     .alert { padding: 8px; margin-bottom: 0.5rem; background: #292a7d; border-radius: 5px; }
-    .carousel { display: flex; overflow-x: auto; gap: 1rem; padding: 1rem 0; }
-    .review-card { min-width: 200px; background: #292a7d; padding: 0.8rem; border-radius: 8px; }
-    .review-name { font-weight: bold; margin-bottom: 4px; }
     footer.footer { padding: 1rem; text-align: center; background: #1a1b3a; margin-top: 2rem; }
+
+    /* Settings dropdown */
+    .settings-menu { position: relative; display: inline-block; margin-left: 1rem; }
+    .menu-icon { cursor: pointer; font-size: 1.5rem; color: #cfcfff; user-select: none; display:flex; align-items:center; gap:4px; }
+    .chevron { display:inline-block; transition: transform 0.3s ease; }
+    .dropdown-menu { display: none; position: absolute; right: 0; top: 2.5rem; background: #1a1b3a;
+      padding: 0.5rem 0; border-radius: 6px; list-style: none; min-width: 180px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      z-index: 1000; opacity:0; transform: translateY(-10px); transition: all 0.3s ease; }
+    .dropdown-menu.show { display: block; opacity:1; transform: translateY(0); }
+    .dropdown-menu li a { display: block; padding: 8px 16px; color: #cfcfff; text-decoration: none; }
+    .dropdown-menu li a:hover { background: #292a7d; color: #fff; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .nav a { display: block; margin: 0.5rem 0; }
+      .wallet-info { display: block; margin-top: 0.5rem; }
+      .desktop-only { display: none; }
+      .mobile-only { display: block; padding: 8px 16px; }
+    }
+    @media (min-width: 769px) {
+      .mobile-only { display: none; }
+      .desktop-only { display: inline-flex; align-items: center; gap:10px; }
+    }
   </style>
 </head>
 <body class="dark">
-  <header class="topbar">
-    <div class="brand">Bright <span class="accent">Venturez</span></div>
-    <nav class="nav">
-      {% for link in nav_links %}
-        <a href="{% url link.url_name %}">{{ link.title }}</a>
-      {% endfor %}
-      {% if request.user.is_authenticated %}
-        <span class="muted">Hi, {{ request.user.first_name|default:request.user.username }}</span>
-        <a class="btn ghost" href="{% url 'core:change_password' %}">Change Password</a>
-        <a class="btn ghost" href="{% url 'core:logout' %}">Logout</a>
 
-        <div class="wallet-info">
-          Balance: ₦<span id="wallet-balance">{{ wallet_balance }}</span>
-          <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
-        </div>
-      {% else %}
-        <a class="btn ghost" href="{% url 'core:login' %}">Login</a>
-        <a class="btn primary" href="{% url 'core:register' %}">Create Account</a>
-      {% endif %}
-    </nav>
-  </header>
-
-  <main class="wrap">
-    {% for m in messages %}
-      <div class="alert">{{ m }}</div>
+<header class="topbar">
+  <div class="brand">Bright <span class="accent">Venturez</span></div>
+  <nav class="nav">
+    {% for link in nav_links %}
+      <a href="{% url link.url_name %}">{{ link.title }}</a>
     {% endfor %}
-    {% block content %}{% endblock %}
-  </main>
 
-  <footer class="footer">
-    <div class="muted">All rights reserved Bright Venturez 2025</div>
-    <div class="muted">Dark Indigo UI</div>
-  </footer>
+    {% if request.user.is_authenticated %}
+      <span class="muted desktop-only">Hi, {{ request.user.first_name|default:request.user.username }}</span>
 
-  <!-- Auto-refresh wallet balance -->
-  <script>
-    document.addEventListener("DOMContentLoaded", function() {
-      function updateWallet() {
-        fetch("{% url 'core:wallet_balance_api' %}")
-          .then(res => res.json())
-          .then(data => {
-            if (data.balance) document.getElementById("wallet-balance").textContent = data.balance;
-          })
-          .catch(err => console.error("Wallet update failed:", err));
-      }
-      setInterval(updateWallet, 10000);
-    });
-  </script>
+      <!-- Settings / Hamburger Menu -->
+      <div class="settings-menu">
+        <div class="menu-icon" onclick="toggleMenu()">
+          ☰ <span class="chevron">▼</span>
+        </div>
+        <ul id="dropdownMenu" class="dropdown-menu">
+          <!-- Mobile wallet -->
+          <li class="mobile-only">
+            Balance: <span id="wallet-balance" style="font-weight:bold; color:#fff;">{{ wallet_balance }}</span>
+            <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
+          </li>
+          <li><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
+          <li><a href="{% url 'core:change_password' %}">Change Password</a></li>
+          <li><a href="{% url 'core:logout' %}">Logout</a></li>
+        </ul>
+      </div>
+
+      <!-- Desktop wallet info -->
+      <div class="wallet-info desktop-only">
+        Balance: <span id="wallet-balance" style="font-weight:bold; color:#fff;">{{ wallet_balance }}</span>
+        <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
+        <a class="fund-btn" href="{% url 'core:dashboard' %}">Dashboard</a>
+      </div>
+    {% else %}
+      <a class="btn ghost" href="{% url 'core:login' %}">Login</a>
+      <a class="btn primary" href="{% url 'core:register' %}">Create Account</a>
+    {% endif %}
+  </nav>
+</header>
+
+<main class="wrap">
+  {% for m in messages %}
+    <div class="alert">{{ m }}</div>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <div class="muted">All rights reserved Bright Venturez 2025</div>
+  <div class="muted">Dark Indigo UI</div>
+</footer>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Wallet animation
+  const walletEl = document.getElementById("wallet-balance");
+  let currentBalance = parseFloat(walletEl.textContent) || 0;
+
+  function animateBalance(newBalance) {
+    newBalance = parseFloat(newBalance) || 0;
+    const duration = 800;
+    const start = currentBalance;
+    const change = newBalance - start;
+    const startTime = performance.now();
+
+    function update(time) {
+      const elapsed = time - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const value = start + change * progress;
+      walletEl.textContent = value.toFixed(2);
+      if (progress < 1) requestAnimationFrame(update);
+      else currentBalance = newBalance;
+    }
+    requestAnimationFrame(update);
+  }
+
+  function updateWallet() {
+    fetch("{% url 'core:wallet_balance_api' %}")
+      .then(res => res.json())
+      .then(data => { if (data.balance) animateBalance(data.balance); })
+      .catch(err => console.error("Wallet update failed:", err));
+  }
+
+  setInterval(updateWallet, 10000);
+});
+
+// Dropdown toggle with chevron rotation
+function toggleMenu() {
+  const menu = document.getElementById('dropdownMenu');
+  const chevron = document.querySelector('.chevron');
+  menu.classList.toggle('show');
+  if (chevron) chevron.style.transform = menu.classList.contains('show') ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+window.onclick = function(event) {
+  if (!event.target.matches('.menu-icon')) {
+    const dropdowns = document.getElementsByClassName('dropdown-menu');
+    const chevron = document.querySelector('.chevron');
+    for (let i = 0; i < dropdowns.length; i++) dropdowns[i].classList.remove('show');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  }
+}
+</script>
+
 </body>
 </html>
