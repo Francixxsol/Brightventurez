@@ -1,42 +1,42 @@
+# core/urls.py
 from django.urls import path
+from django.contrib.auth import views as auth_views
 from . import views
-from django.contrib.auth import views as auth_views  # Needed for password reset
 
 app_name = "core"
 
 urlpatterns = [
-    # Home
+    # Home & Auth
     path("", views.home, name="home"),
-
-    # Auth
     path("register/", views.register_view, name="register"),
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
+    path("dashboard/", views.dashboard, name="dashboard"),
     path("change-password/", views.change_password, name="change_password"),
 
-    # Dashboard & Transactions
-    path("dashboard/", views.dashboard, name="dashboard"),
+    # Transactions
     path("transactions/", views.user_transactions, name="user_transactions"),
 
-    # Wallet Funding
-    path("fund-wallet/", views.fund_wallet, name="fund_wallet"),
+    # Fund & verify wallet
+    path("fund-wallet/", views.FundWalletView.as_view(), name="fund_wallet"),
     path("payment/verify/", views.verify_payment, name="verify_payment"),
 
-    # VTU Services
-    path("buy-airtime/", views.buy_airtime, name="buy_airtime"),
-    path("buy-data/", views.buy_data, name="buy_data"),
+    # Buy data/airtime
+    path("buy-data/", views.BuyDataView.as_view(), name="buy_data"),
+    path("buy-airtime/", views.BuyAirtimeView.as_view(), name="buy_airtime"),
+# Add under buy data/airtime
+path("sell-data/", views.sell_data_view, name="sell_data"),		
+    # AJAX endpoints
+    path("get_plans/", views.get_plans, name="get_plans"),
+    path("api/wallet-balance/", views.wallet_balance_api, name="wallet_balance_api"),  # <-- added
 
-    # Sell Data
-    path("sell-data/", views.sell_data, name="sell_data"),
-    path("sell-requests/", views.sell_requests_list, name="sell_requests"),
+    # Webhook
+    path("paystack/webhook/", views.paystack_webhook, name="paystack_webhook"),
 
-    # Wallet API
-    path("api/wallet/", views.wallet_balance_api, name="wallet_balance_api"),
-
-    # Password reset URLs
+    # Password reset using built-in views
     path(
         "password_reset/",
-        auth_views.PasswordResetView.as_view(template_name="core/password_reset_form.html"),
+        auth_views.PasswordResetView.as_view(template_name="core/password_reset.html"),
         name="password_reset"
     ),
     path(
@@ -54,7 +54,4 @@ urlpatterns = [
         auth_views.PasswordResetCompleteView.as_view(template_name="core/password_reset_complete.html"),
         name="password_reset_complete"
     ),
-
-    # Data Plans API
-    path("get_plans/", views.get_plans, name="get_plans"),
 ]

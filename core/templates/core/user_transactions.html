@@ -1,0 +1,88 @@
+{% extends "core/base.html" %}
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h2 class="text-2xl font-bold mb-4 text-gray-800">Your Transactions</h2>
+
+    <!-- Filter & Export Form -->
+    <form method="get" class="mb-4 flex flex-wrap gap-2 items-center">
+        <input type="text" name="q" value="{{ query|default:'' }}"
+               placeholder="Search by reference, type, status..."
+               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+
+        <input type="date" name="start_date" value="{{ start_date|default:'' }}"
+               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+
+        <input type="date" name="end_date" value="{{ end_date|default:'' }}"
+               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Filter</button>
+
+        {% if transactions %}
+        <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}export=csv"
+           class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Export CSV</a>
+        {% endif %}
+    </form>
+
+    {% if transactions %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-white border border-gray-200 shadow-sm rounded-lg">
+            <thead class="bg-gray-100">
+                <tr>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">#</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Reference</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Type</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Amount</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
+                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Date</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for tx in transactions %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2 text-sm text-gray-700">{{ forloop.counter }}</td>
+                    <td class="px-4 py-2 text-sm text-gray-700">{{ tx.reference }}</td>
+                    <td class="px-4 py-2 text-sm text-gray-700">{{ tx.transaction_type }}</td>
+                    <td class="px-4 py-2 text-sm text-gray-700">₦{{ tx.amount }}</td>
+                    <td class="px-4 py-2 text-sm">
+                        {% if tx.status == "Successful" %}
+                            <span class="px-2 py-1 rounded-full bg-green-100 text-green-800 font-semibold">{{ tx.status }}</span>
+                        {% elif tx.status == "Pending" %}
+                            <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold">{{ tx.status }}</span>
+                        {% else %}
+                            <span class="px-2 py-1 rounded-full bg-red-100 text-red-800 font-semibold">{{ tx.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-2 text-sm text-gray-500">{{ tx.created_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="mt-4 flex justify-center space-x-2">
+        {% if transactions.has_previous %}
+            <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ transactions.previous_page_number }}" 
+               class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">&laquo; Prev</a>
+        {% endif %}
+
+        {% for num in transactions.paginator.page_range %}
+            {% if transactions.number == num %}
+                <span class="px-3 py-1 bg-blue-600 text-white rounded">{{ num }}</span>
+            {% elif num >= transactions.number|add:"-2" and num <= transactions.number|add:"2" %}
+                <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ num }}" 
+                   class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+
+        {% if transactions.has_next %}
+            <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ transactions.next_page_number }}" 
+               class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Next &raquo;</a>
+        {% endif %}
+    </div>
+
+    {% else %}
+        <p class="text-gray-600">No transactions found.</p>
+    {% endif %}
+</div>
+{% endblock %}

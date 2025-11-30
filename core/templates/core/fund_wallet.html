@@ -4,7 +4,11 @@
   <h2>Fund Wallet</h2>
   <form method="post">
     {% csrf_token %}
-    <div class="field"><input type="number" name="amount" placeholder="Enter amount (₦)" required></div>
+    <div class="field">
+      <input type="number" name="amount" placeholder="Enter amount ( ^b )" required>
+    </div>
+    <!-- Hidden split code for dynamic splitting -->
+    <input type="hidden" name="split_code" value="ACCT_q1us193ulmhcyzo">
     <button class="btn primary" type="submit">Proceed to Paystack</button>
   </form>
 </section>

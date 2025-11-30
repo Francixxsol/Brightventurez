@@ -36,6 +36,7 @@ REQUEST_STATUS = [
 # -------------------------------
 # Wallet Model
 # -------------------------------
+# models.py
 class Wallet(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -47,28 +48,46 @@ class Wallet(models.Model):
         verbose_name = "Wallet"
         verbose_name_plural = "Wallets"
 
-# -------------------------------
-# Data Type Choices
-# -------------------------------
-DATA_TYPE_CHOICES = [
-    ("SME", "SME"),
-    ("AWUF", "AWUF"),
-    ("GIFTING", "GIFTING"),
-]
-class PriceTable(models.Model):
-    network = models.CharField(max_length=20, choices=NETWORK_CHOICES)
-    data_type = models.CharField(max_length=20, choices=DATA_TYPE_CHOICES, default="SME")
-    plan_name = models.CharField(max_length=100)
-    vtu_cost = models.DecimalField(max_digits=10, decimal_places=2)
-    my_price = models.DecimalField(max_digits=10, decimal_places=2)
-    api_code = models.CharField(max_length=50, blank=True, null=True)  # <-- new field
+class WalletTransaction(models.Model):
+    TRANSACTION_TYPE_CHOICES = (
+        ('credit', 'Credit'),
+        ('debit', 'Debit'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPE_CHOICES)
+    description = models.CharField(max_length=255)
+    reference = models.CharField(max_length=100, blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.network} - {self.data_type} - {self.plan_name}"
+        return f"{self.user.username} - {self.transaction_type} ₦{self.amount}"
+# -------------------------------
+# Plan Type Choices
+# -------------------------------
+PLAN_TYPE_CHOICES = [
+    ('SME', 'SME'),
+    ('GIFTING', 'Gifting'),
+]
+
+class PriceTable(models.Model):
+    network = models.CharField(max_length=20, choices=NETWORK_CHOICES)
+    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES, default="SME")  # <- changed
+    plan_name = models.CharField(max_length=100)
+    duration = models.CharField(max_length=20, blank=True, null=True)  # <-- new field
+    vtu_cost = models.DecimalField(max_digits=10, decimal_places=2)
+    my_price = models.DecimalField(max_digits=10, decimal_places=2)
+    api_code = models.CharField(max_length=50, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.network} - {self.plan_type} - {self.plan_name}"  # <- updated to plan_type
 
     class Meta:
         verbose_name = "Price Table"
         verbose_name_plural = "Price Tables"
+
+# -------------------------------
 # Transaction (Wallet + Airtime/Data + Funding)
 # -------------------------------
 class Transaction(models.Model):

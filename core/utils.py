@@ -1,74 +1,131 @@
+# core/utils.py
+import json
+import uuid
 import requests
-from .models import Provider, ProviderPlan
+from decimal import Decimal, InvalidOperation
 
+from .models import (
+    Provider,
+    ProviderPlan,
+    VirtualPlan,
+    DataTransaction,
+    Wallet
+)
+
+# --------------------------
+# SAFE DECIMAL PARSER
+# --------------------------
+def parse_decimal(value, default=Decimal("0.00")):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return default
+
+
+# --------------------------
+# JSON SAFE PARSER
+# --------------------------
+def json_or_text(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return {"text": getattr(resp, "text", "")}
+
+
+# --------------------------
+# FETCH PLANS FROM PROVIDER
+# Auto-sync Provider → ProviderPlan
+# --------------------------
 def fetch_provider_plans(provider_id):
     provider = Provider.objects.get(id=provider_id)
     headers = {"Authorization": f"Bearer {provider.api_key}"}
-    
-    # Example: adjust endpoint path depending on your provider
-    response = requests.get(f"{provider.api_base_url}/data-plans", headers=headers)
-    
-    if response.status_code == 200:
-        data = response.json()
-        for plan in data.get('plans', []):
-            ProviderPlan.objects.update_or_create(
-                provider=provider,
-                plan_code=plan['code'],
-                defaults={
-                    'plan_name': plan['name'],
-                    'network': plan['network'],
-                    'size_mb': plan['size'],
-                    'price': plan['price'],
-                }
-            )
-        return True
-    return False
 
-import uuid
-import requests
-from .models import VirtualPlan, ProviderPlan, Provider, DataTransaction
+    url = f"{provider.api_base_url}/data-plans"
 
+    try:
+        response = requests.get(url, headers=headers, timeout=30)
+    except Exception as e:
+        return {"status": False, "error": str(e)}
+
+    if response.status_code != 200:
+        return {"status": False, "error": response.text}
+
+    data = response.json()
+
+    # Assuming provider returns list of plans like:
+    # { "plans": [ { "code": "", "name": "", "network": "", "size": "", "price": "" } ] }
+    for plan in data.get("plans", []):
+        ProviderPlan.objects.update_or_create(
+            provider=provider,
+            plan_code=plan["code"],
+            defaults={
+                "plan_name": plan["name"],
+                "network": plan["network"],
+                "size_mb": plan["size"],
+                "price": parse_decimal(plan["price"]),
+            },
+        )
+
+    return {"status": True}
+
+
+# --------------------------
+# BUY DATA (supports VIRTUAL & PROVIDER plans)
+# --------------------------
 def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
-    ref = str(uuid.uuid4())[:8]  # short unique ref
+    ref = str(uuid.uuid4()).replace("-", "")[:12]  # short unique ref
 
+    # --------------------------
+    # SELECT PLAN TYPE
+    # --------------------------
     if plan_type == "VIRTUAL":
         plan = VirtualPlan.objects.get(id=plan_id)
         amount = plan.selling_price
         provider_plan = plan.linked_provider_plan
+        plan_name = plan.plan_name
 
-    else:
+    else:  # PROVIDER DIRECT
         plan = ProviderPlan.objects.get(id=plan_id)
         amount = plan.price
         provider_plan = plan
+        plan_name = plan.plan_name
 
-    # create transaction
+    # --------------------------
+    # CREATE TRANSACTION
+    # --------------------------
     txn = DataTransaction.objects.create(
         user=user,
         network=network,
         phone_number=phone_number,
         plan_type=plan_type,
-        plan_name=f"{network} {plan.size_mb}MB",
+        plan_name=plan_name,
         amount=amount,
         reference=ref,
+        status="PENDING"
     )
 
-    # --- provider API call ---
+    # --------------------------
+    # CALL PROVIDER API
+    # --------------------------
     try:
         provider = provider_plan.provider
+
         headers = {"Authorization": f"Bearer {provider.api_key}"}
         payload = {
             "network": network,
             "plan_code": provider_plan.plan_code,
             "phone": phone_number,
-            "ref": ref,
+            "reference": ref,
         }
 
-        res = requests.post(f"{provider.api_base_url}/buy-data", json=payload, headers=headers, timeout=20)
-        data = res.json()
+        url = f"{provider.api_base_url}/buy-data"
 
-        txn.provider_response = str(data)
+        res = requests.post(url, json=payload, headers=headers, timeout=40)
+        data = json_or_text(res)
 
-        if res.status_code == 200 and data.get("status") in ["success", "ok"]:
+        txn.provider_response = json.dumps(data)
+
+        if res.status_code == 200 and str(data.get("status")).lower() in ["success", "ok"]:
             txn.status = "SUCCESS"
         else:
             txn.status = "FAILED"
@@ -82,8 +139,12 @@ def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
         txn.save()
         return txn
 
-from .models import Wallet
 
+# --------------------------
+# GET OR CREATE USER WALLET
+# --------------------------
 def get_or_create_wallet(user):
-    wallet, created = Wallet.objects.get_or_create(user=user, defaults={'balance': 0})
+    wallet, created = Wallet.objects.get_or_create(
+        user=user, defaults={"balance": Decimal("0.00")}
+    )
     return wallet

@@ -1,34 +1,42 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-from django.conf import settings
-from django.contrib.auth.forms import PasswordChangeForm
-from decimal import Decimal
-from .models import Wallet, Transaction, PriceTable, SellRequest
-from django.shortcuts import render, redirect
-from django.http import JsonResponse
-from django.contrib import messages
-from django.core.cache import cache  # ✅ add here, not inside any function
-from .models import PriceTable, Wallet
-from .forms import RegisterForm
+# core/views.py
+import json
 import uuid
-import requests
+from decimal import Decimal, InvalidOperation
+
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash, get_user_model
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponse
+from django.shortcuts import redirect, render, get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+
+from django_q.tasks import async_task
+import csv
+from django.utils.dateparse import parse_date
+from .forms import RegisterForm
+from django.core.paginator import Paginator
+from django.db.models import Q
+from .models import PriceTable, Wallet, Transaction, SellRequest
+from .services import PaystackService, WalletService, VTUService, PROCESSING_FEE
+from .utils.helpers import parse_decimal
+User = get_user_model()
 
 
-# ------------------------------
+# -----------------------------
 # Home
-# ------------------------------
+# -----------------------------
 @csrf_exempt
 def home(request):
     return render(request, "core/home.html")
 
 
-# ------------------------------
-# Register
-# ------------------------------
+# -----------------------------
+# Register - creates wallet immediately and enqueues background job
+# -----------------------------
 @csrf_exempt
 def register_view(request):
     if request.user.is_authenticated:
@@ -38,25 +46,23 @@ def register_view(request):
         form = RegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
+            # ensure wallet exists immediately (synchronous)
+            Wallet.objects.get_or_create(user=user)
 
-            # 🔹 Run wallet creation in the background instead of blocking here
-            from django_q.tasks import async_task
-            from core.tasks import create_wallet_async
-            async_task(create_wallet_async, user.id)
+            # enqueue any heavy post-signup tasks (welcome email, analytics, etc.)
+            async_task("core.tasks.post_signup_tasks", user.id, hook=None)
 
             messages.success(request, "Account created successfully! You can now log in.")
             return redirect("core:login")
-
     else:
         form = RegisterForm()
 
     return render(request, "core/register.html", {"form": form})
 
-# ------------------------------
+
+# -----------------------------
 # Login
-# ------------------------------
-from django_q.tasks import async_task
-from core.tasks import create_wallet_async
+# -----------------------------
 @csrf_exempt
 def login_view(request):
     if request.method == "POST":
@@ -65,374 +71,440 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user:
             login(request, user)
-            # Run wallet creation asynchronously
-            async_task(create_wallet_async, user.id)
+            # ensure wallet exists on login too (defensive)
+            Wallet.objects.get_or_create(user=user)
             return redirect("core:dashboard")
         messages.error(request, "Invalid username or password.")
     return render(request, "core/login.html")
 
-# ------------------------------
+
+# -----------------------------
 # Logout
-# ------------------------------
-@csrf_exempt
+# -----------------------------
 @login_required
 def logout_view(request):
     logout(request)
-    messages.info(request, "You’ve been logged out successfully.")
+    messages.info(request, "You have been logged out successfully.")
     return redirect("core:login")
 
 
-# ------------------------------
+# -----------------------------
 # Dashboard
-# ------------------------------
-@csrf_exempt
+# -----------------------------
 @login_required
 def dashboard(request):
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
-    transactions = Transaction.objects.filter(user=request.user).order_by('-created_at')[:10]
-    return render(request, 'core/dashboard.html', {
-        'wallet': wallet,
-        'transactions': transactions
-    })
+    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")[:25]
+    return render(request, "core/dashboard.html", {"wallet": wallet, "transactions": transactions})
 
 
-# ------------------------------
-# Change Password
-# ------------------------------
-@csrf_exempt
+# -----------------------------
+# Change password
+# -----------------------------
 @login_required
 def change_password(request):
-    if request.method == 'POST':
+    if request.method == "POST":
         form = PasswordChangeForm(request.user, request.POST)
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user)
-            messages.success(request, 'Password updated successfully!')
-            return redirect('core:dashboard')
+            messages.success(request, "Password updated successfully!")
+            return redirect("core:dashboard")
         else:
-            messages.error(request, 'Please correct the errors below.')
+            messages.error(request, "Please correct the errors below.")
     else:
         form = PasswordChangeForm(request.user)
-    return render(request, 'core/change_password.html', {'form': form})
+    return render(request, "core/change_password.html", {"form": form})
 
 
-# ------------------------------
-# Transactions
-# ------------------------------
-@csrf_exempt
-@login_required
-def user_transactions(request):
-    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")
-    return render(request, "core/user_transactions.html", {"transactions": transactions})
+# -----------------------------
+# Fund wallet view (class wrapper)
+# -----------------------------
+@method_decorator(csrf_exempt, name="dispatch")
+class FundWalletView(View):
+    def get(self, request):
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        return render(request, "core/fund_wallet.html", {"wallet": wallet})
+
+    def post(self, request):
+        raw_amount = request.POST.get("amount")
+        naira_amount = parse_decimal(raw_amount)
+        if naira_amount <= 0:
+            messages.error(request, "Amount must be greater than zero.")
+            return redirect("core:fund_wallet")
+
+        metadata = {"intent": "wallet_funding", "user_id": request.user.id}
+        try:
+            res = PaystackService.initialize_transaction(request.user.email, naira_amount, metadata)
+        except Exception as e:
+            messages.error(request, f"Could not initialize payment: {e}")
+            return redirect("core:fund_wallet")
+
+        if res.get("status") and res.get("data", {}).get("authorization_url"):
+            return redirect(res["data"]["authorization_url"])
+
+        messages.error(request, "Unable to initialize payment. Try again.")
+        return redirect("core:fund_wallet")
 
 
-# ------------------------------
-# Fund Wallet (Paystack)
-# ------------------------------
-@csrf_exempt
-@login_required
-def fund_wallet(request):
-    if request.method == "POST":
-        amount = int(request.POST.get("amount", 0)) * 100  # kobo
-        email = request.user.email
-        payload = {
-            "email": email,
-            "amount": amount,
-            "callback_url": request.build_absolute_uri("/payment/verify/"),
-        }
-        headers = {
-            "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
-            "Content-Type": "application/json"
-        }
-        res = requests.post(f"{settings.PAYSTACK_BASE_URL}/transaction/initialize", json=payload, headers=headers)
-        data = res.json()
-        if data.get("status"):
-            return redirect(data["data"]["authorization_url"])
-        messages.error(request, "Unable to initialize payment.")
-    return render(request, "core/fund_wallet.html")
-
-
-# ------------------------------
-# Verify Payment (Paystack)
-# ------------------------------
+# -----------------------------
+# Verify payment (redirect after user completes on Paystack)
+# -----------------------------
 @csrf_exempt
 @login_required
 def verify_payment(request):
     reference = request.GET.get("reference")
-    if reference:
-        headers = {
-            "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}"
-        }
+    if not reference:
+        messages.error(request, "Invalid payment reference.")
+        return redirect("core:fund_wallet")
 
-        try:
-            res = requests.get(
-                f"{settings.PAYSTACK_BASE_URL}/transaction/verify/{reference}",
-                headers=headers
-            )
-            data = res.json()
+    try:
+        res = PaystackService.verify_transaction(reference)
+    except Exception as e:
+        messages.error(request, f"Error verifying payment: {e}")
+        return redirect("core:fund_wallet")
 
-            if data.get("status") and data["data"]["status"] == "success":
-                amount = data["data"]["amount"] / 100  # Paystack returns kobo, so divide by 100
-                amount = Decimal(str(amount))  # Convert to Decimal
+    if res.get("status") and res.get("data", {}).get("status") == "success":
+        amount_naira = Decimal(str(res["data"]["amount"] / 100))
+        credited = max(amount_naira - PROCESSING_FEE, Decimal("0.00"))
 
-                wallet, _ = Wallet.objects.get_or_create(user=request.user)
-                wallet.balance += amount
-                wallet.save()
+        # idempotency: ensure we haven't processed this reference before
+        if Transaction.objects.filter(reference=reference).exists():
+            messages.info(request, "Payment already processed.")
+            return redirect("core:dashboard")
 
-                Transaction.objects.create(
-                    user=request.user,
-                    transaction_type="Wallet Funding",
-                    amount=amount,
-                    status="Successful",
-                    reference=reference,
-                )
+        WalletService.credit_user(request.user, credited, reference=reference,
+                                  note=f"Funded via Paystack (gross ₦{amount_naira}, fee ₦{PROCESSING_FEE})")
+        messages.success(request, f"Wallet funded successfully with ₦{credited}")
+        return redirect("core:dashboard")
 
-                messages.success(request, f"Wallet funded successfully with ₦{amount}")
-                return redirect("core:dashboard")
-
-            else:
-                messages.error(request, "Payment verification failed.")
-                return redirect("core:fund_wallet")
-
-        except Exception as e:
-            messages.error(request, f"Error verifying payment: {e}")
-            return redirect("core:fund_wallet")
-
-    messages.error(request, "Invalid payment reference.")
+    messages.error(request, "Payment verification failed.")
     return redirect("core:fund_wallet")
 
-# ------------------------------
-# Sell Data Request
-# ------------------------------
-@csrf_exempt
-@login_required
-def sell_data(request):
-    if request.method == "POST":
-        network = request.POST.get("network")
-        amount = request.POST.get("amount")
-        phone_number = request.POST.get("phone")
-        if not all([network, amount, phone_number]):
-            messages.error(request, "All fields are required.")
-            return redirect("core:sell_data")
-        SellRequest.objects.create(
-            user=request.user,
-            network=network,
-            amount=amount,
-            phone_number=phone_number,
-        )
-        messages.success(request, "Sell request submitted successfully.")
-        return redirect("core:sell_data")
 
-    user_requests = SellRequest.objects.filter(user=request.user).order_by("-created_at")
-    return render(request, "core/sell_data.html", {"user_requests": user_requests})
+# -----------------------------
+# Buy data view (class)
+# -----------------------------
+@method_decorator(csrf_exempt, name="dispatch")
+class BuyDataView(View):
+    def get(self, request):
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        plans = PriceTable.objects.all()
+        return render(request, "core/buy_data.html", {"wallet": wallet, "plans": plans})
 
-
-# ------------------------------
-# Admin: Approve Sell Request
-# ------------------------------
-@csrf_exempt
-@login_required
-def approve_sell_request(request, request_id):
-    if not request.user.is_staff:
-        messages.error(request, "Unauthorized action.")
-        return redirect("core:dashboard")
-
-    sell_req = get_object_or_404(SellRequest, id=request_id)
-    if sell_req.status != "Approved":
-        sell_req.status = "Approved"
-        sell_req.save()
-        wallet, _ = Wallet.objects.get_or_create(user=sell_req.user)
-        wallet.balance += sell_req.amount
-        wallet.save()
-        Transaction.objects.create(
-            user=sell_req.user,
-            transaction_type="Wallet Funding",
-            amount=sell_req.amount,
-            status="Successful",
-            reference=str(uuid.uuid4())[:8],
-        )
-        messages.success(request, f"Request approved and ₦{sell_req.amount} credited to {sell_req.user.username}.")
-    return redirect("core:sell_requests_list")
-
-
-# ------------------------------
-# Admin: Sell Requests List
-# ------------------------------
-@csrf_exempt
-@login_required
-def sell_requests_list(request):
-    if not request.user.is_staff:
-        messages.error(request, "Unauthorized")
-        return redirect("core:dashboard")
-    requests_list = SellRequest.objects.all().order_by("-created_at")
-    return render(request, "core/sell_requests_list.html", {"requests": requests_list})
-
-
-# ------------------------------
-# Buy Airtime (Offline Simulation)
-# ------------------------------
-@csrf_exempt
-@login_required
-def buy_airtime(request):
-    wallet, _ = Wallet.objects.get_or_create(user=request.user)
-    if request.method == "POST":
-        network = request.POST.get("network")
-        phone = request.POST.get("phone")
-        amount = request.POST.get("amount")
-
-        try:
-            amount = float(amount)
-        except (TypeError, ValueError):
-            messages.error(request, "Invalid amount entered.")
-            return redirect("core:buy_airtime")
-
-        if wallet.balance >= amount:
-            wallet.balance -= amount
-            wallet.save()
-            Transaction.objects.create(
-                user=request.user,
-                transaction_type="Airtime Purchase",
-                amount=amount,
-                status="Successful",
-                reference=str(uuid.uuid4())[:8],
-            )
-            messages.success(request, f"Airtime ₦{amount} sent to {phone} ({network}) successfully!")
-        else:
-            messages.error(request, "Insufficient wallet balance.")
-        return redirect("core:buy_airtime")
-
-    return render(request, "core/buy_airtime.html", {"wallet": wallet})
-
-
-# ------------------------------
-# Wallet Balance API
-# ------------------------------
-@csrf_exempt
-@login_required
-def wallet_balance_api(request):
-    wallet, _ = Wallet.objects.get_or_create(user=request.user)
-    data = {
-        "username": request.user.username,
-        "balance": float(wallet.balance),
-    }
-    return JsonResponse(data)
-
-# ------------------------------
-# Buy Data (Offline Simulation)
-# ------------------------------
-
-
-VTU_API_KEY = "3e1aafc7efe00b49a0f640049b7ac7"
-VTU_BASE_URL = "https://vtu.com.ng/wp-json/api/v1/data"
-
-@csrf_exempt
-@login_required
-def buy_data(request):
-    wallet, _ = Wallet.objects.get_or_create(user=request.user)
-    plans = PriceTable.objects.all()
-
-    if request.method == "POST":
+    def post(self, request):
         network = request.POST.get("network")
         plan_id = request.POST.get("plan_id")
         phone = request.POST.get("phone")
 
-        plan = get_object_or_404(PriceTable, id=plan_id)
-        amount = plan.my_price
-
-        if wallet.balance < amount:
-            messages.error(request, "❌ Insufficient wallet balance.")
+        if not all([network, plan_id, phone]):
+            messages.error(request, "All fields are required.")
             return redirect("core:buy_data")
 
-        payload = {
-            "network": network,
-            "mobile_number": phone,
-            "plan": plan.api_code,  # make sure your PriceTable has this field
-            "Ported_number": "true",
-        }
+        plan = VTUService.get_plan_object(plan_id)
+        if not plan:
+            messages.error(request, "Plan not found.")
+            return redirect("core:buy_data")
 
-        headers = {
-            "Authorization": f"Token {VTU_API_KEY}"
-        }
+        amount = Decimal(str(plan.my_price or plan.vtu_cost or 0))
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
 
-        try:
-            response = requests.post(VTU_BASE_URL, data=payload, headers=headers)
-            data = response.json()
-            print("🔍 VTU Response:", json.dumps(data, indent=2))
+        # If user has enough in platform wallet — debit & call provider
+        if (wallet.balance or Decimal("0.00")) >= amount:
+            ok, tx = WalletService.debit_user(request.user, amount, reference=str(uuid.uuid4())[:12],
+                                             note=f"Auto data purchase: {plan.plan_name}")
+            if not ok:
+                messages.error(request, "Insufficient wallet balance.")
+                return redirect("core:buy_data")
 
-            # ✅ Log transaction immediately for tracking
-            trx = Transaction.objects.create(
-                user=request.user,
-                transaction_type="Data Purchase",
-                amount=amount,
-                status="Pending",
-                reference=data.get("order_id", str(uuid.uuid4())[:8]),
-                description=f"Network: {network}, Phone: {phone}",
-            )
+            provider_resp = VTUService.buy_data(plan.api_code or plan.plan_name, phone, plan.api_code or plan.plan_name)
+            success = False
+            if isinstance(provider_resp, dict):
+                if provider_resp.get("status") in ("success", True) or provider_resp.get("code") in (101, "101"):
+                    success = True
 
-            if data.get("status") == "success":
-                wallet.balance -= amount
-                wallet.save()
-                trx.status = "Successful"
-                trx.save()
-                messages.success(
-                    request,
-                    f"✅ {network} data plan {plan.plan_name} sent to {phone} successfully!"
-                )
+            if success:
+                messages.success(request, f"{network} data plan {plan.plan_name} sent to {phone} successfully!")
             else:
-                error_message = data.get("message", "Unknown VTU error")
-                trx.status = "Failed"
-                trx.description += f" | VTU Error: {error_message}"
-                trx.save()
-                messages.error(
-                    request,
-                    f"❌ VTU API Error: {error_message}"
-                )
+                messages.error(request, f"VTU API Error: {provider_resp}")
+            return redirect("core:buy_data")
 
+        # Wallet insufficient => initialize Paystack checkout with dynamic split (auto-purchase intent)
+        metadata = {
+            "intent": "auto_purchase",
+            "user_id": request.user.id,
+            "purchase_type": "data",
+            "plan_id": plan.id,
+            "plan_name": plan.plan_name,
+            "phone": phone,
+            "amount": str(amount)
+        }
+        try:
+            res = PaystackService.initialize_transaction(request.user.email, amount, metadata)
         except Exception as e:
-            error = str(e)
-            Transaction.objects.create(
-                user=request.user,
-                transaction_type="Data Purchase",
-                amount=amount,
-                status="Failed",
-                reference=str(uuid.uuid4())[:8],
-                description=f"Exception: {error}",
-            )
-            messages.error(request, f"⚠️ Request failed: {error}")
+            messages.error(request, f"Could not initialize payment: {e}")
+            return redirect("core:buy_data")
 
+        if res.get("status") and res.get("data", {}).get("authorization_url"):
+            return redirect(res["data"]["authorization_url"])
+
+        messages.error(request, "Unable to initialize payment. Try again.")
         return redirect("core:buy_data")
 
-    return render(request, "core/buy_data.html", {"wallet": wallet, "plans": plans})
 
-# Data Plans API
-# ------------------------------
+# -----------------------------
+# Buy airtime view (class)
+# -----------------------------
+@method_decorator(csrf_exempt, name="dispatch")
+class BuyAirtimeView(View):
+    def get(self, request):
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        return render(request, "core/buy_airtime.html", {"wallet": wallet})
+
+    def post(self, request):
+        network = request.POST.get("network")
+        phone = request.POST.get("phone")
+        raw_amount = request.POST.get("amount")
+        try:
+            amount = Decimal(str(raw_amount))
+        except (InvalidOperation, TypeError):
+            messages.error(request, "Invalid amount")
+            return redirect("core:buy_airtime")
+
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        if (wallet.balance or Decimal("0.00")) >= amount:
+            ok, tx = WalletService.debit_user(request.user, amount, reference=str(uuid.uuid4())[:12],
+                                             note=f"Airtime {network} to {phone}")
+            if not ok:
+                messages.error(request, "Insufficient wallet balance.")
+                return redirect("core:buy_airtime")
+
+            provider_resp = VTUService.buy_airtime(network, phone, amount)
+            success = False
+            if isinstance(provider_resp, dict):
+                if provider_resp.get("status") in ("success", True) or provider_resp.get("code") in (101, "101"):
+                    success = True
+
+            if success:
+                messages.success(request, f"Airtime ₦{amount} sent to {phone} ({network})")
+            else:
+                messages.error(request, f"VTU API Error: {provider_resp}")
+            return redirect("core:buy_airtime")
+
+        # insufficient wallet -> init Paystack dynamic-split checkout
+        metadata = {
+            "intent": "auto_purchase",
+            "user_id": request.user.id,
+            "purchase_type": "airtime",
+            "phone": phone,
+            "amount": str(amount)
+        }
+        try:
+            res = PaystackService.initialize_transaction(request.user.email, amount, metadata)
+        except Exception as e:
+            messages.error(request, f"Could not initialize payment: {e}")
+            return redirect("core:buy_airtime")
+
+        if res.get("status") and res.get("data", {}).get("authorization_url"):
+            return redirect(res["data"]["authorization_url"])
+
+        messages.error(request, "Unable to initialize payment. Try again.")
+        return redirect("core:buy_airtime")
+
+
+# -----------------------------
+# AJAX: get plans
+# -----------------------------
 @csrf_exempt
 def get_plans(request):
     network = request.GET.get("network")
     data_type = request.GET.get("data_type")
+    if not network or not data_type:
+        return JsonResponse({"error": "network and data_type required"}, status=400)
 
-    plans = PriceTable.objects.filter(network=network, data_type=data_type).values(
-        "id", "plan_name", "vtu_cost", "my_price"
+    qs = PriceTable.objects.filter(network=network, plan_type=data_type).values(
+        "id", "plan_name", "vtu_cost", "my_price", "duration"
     )
-
-    plan_list = []
-    for p in plans:
-        # Extract size and duration from the plan name
-        size = None
-        duration = None
-        words = p["plan_name"].split()
-        for w in words:
-            if "GB" in w or "MB" in w:
-                size = w
-            if "Day" in w or "Days" in w:
-                duration = w
-
-        plan_list.append({
+    plans = []
+    for p in qs:
+        size = ""
+        for token in (p.get("plan_name") or "").split():
+            if "GB" in token or "MB" in token:
+                size = token
+                break
+        plans.append({
             "id": p["id"],
             "plan_name": p["plan_name"],
-            "size": size or "",
-            "duration": duration or "",
-            "selling_price": float(p["my_price"]),
+            "size": size,
+            "duration": p.get("duration") or "",
+            "selling_price": float(p.get("my_price") or 0),
         })
+    return JsonResponse({"plans": plans})
 
-    return JsonResponse({"plans": plan_list})
+
+# -----------------------------
+# Paystack webhook (robust)
+# -----------------------------
+@csrf_exempt
+def paystack_webhook(request):
+    if request.method != "POST":
+        return HttpResponseBadRequest("Invalid method")
+
+    signature = request.headers.get("X-Paystack-Signature") or request.META.get("HTTP_X_PAYSTACK_SIGNATURE")
+    raw = request.body or b""
+    if not PaystackService.verify_signature(raw, signature):
+        return JsonResponse({"error": "invalid signature"}, status=401)
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception as e:
+        return JsonResponse({"error": "invalid json", "detail": str(e)}, status=400)
+
+    event = payload.get("event")
+    if event != "charge.success":
+        return JsonResponse({"status": "ignored"}, status=200)
+
+    data = payload.get("data", {})
+    reference = data.get("reference")
+    amount_kobo = int(data.get("amount", 0))
+    email = data.get("customer", {}).get("email")
+    if not reference or not email:
+        return JsonResponse({"error": "incomplete data"}, status=400)
+
+    # idempotency
+    if Transaction.objects.filter(reference=reference).exists():
+        return JsonResponse({"status": "already_processed"}, status=200)
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "user not found"}, status=404)
+
+    amount_naira = Decimal(amount_kobo) / Decimal(100)
+
+    # extract subaccount split info robustly
+    split_payload = data.get("split") or data.get("authorization", {}).get("split") or {}
+    subaccounts = split_payload.get("subaccounts") or data.get("subaccounts") or []
+
+    provider_total_received = Decimal("0.00")
+    subaccounts_info = []
+
+    if subaccounts and isinstance(subaccounts, list):
+        for s in subaccounts:
+            sub = {"subaccount": s.get("subaccount"), "share": s.get("share"), "amount": None}
+            if s.get("amount") is not None:
+                try:
+                    amt_kobo = int(s.get("amount"))
+                    amt_naira = Decimal(amt_kobo) / Decimal(100)
+                    sub["amount"] = amt_naira
+                    provider_total_received += amt_naira
+                except Exception:
+                    sub["amount"] = None
+            subaccounts_info.append(sub)
+
+    # if provider amounts not present, compute by share percentages
+    if provider_total_received == Decimal("0.00") and subaccounts_info:
+        total_provider_pct = sum([int(s.get("share") or 0) for s in subaccounts_info])
+        if total_provider_pct > 0:
+            for s in subaccounts_info:
+                share = Decimal(s.get("share") or 0)
+                amt = (share / Decimal(100)) * amount_naira
+                amt = amt.quantize(Decimal("0.01"))
+                s["amount"] = amt
+                provider_total_received += amt
+
+    platform_received = (amount_naira - provider_total_received).quantize(Decimal("0.01")) if provider_total_received > 0 else amount_naira
+
+    try:
+        credited_amount = platform_received if platform_received is not None else Decimal("0.00")
+        WalletService.credit_user(user, credited_amount, reference=reference,
+                                  note=f"Webhook credit (gross ₦{amount_naira}, platform ₦{credited_amount})")
+
+        # store a log transaction with provider receipts info
+        Transaction.objects.create(
+            user=user,
+            transaction_type="Webhook Split Log",
+            amount=provider_total_received,
+            status="Successful",
+            reference=f"split-{reference}",
+            description=json.dumps({"subaccounts": subaccounts_info}),
+        )
+    except Exception as e:
+        return JsonResponse({"error": f"credit failed: {str(e)}"}, status=500)
+
+    # If the webhook metadata indicated an auto_purchase intent, attempt to finish it:
+    metadata = data.get("metadata") or {}
+    if metadata.get("intent") == "auto_purchase":
+        # We schedule an async job to finish the auto_purchase (safer than blocking webhook)
+        async_task("core.tasks.process_auto_purchase_from_metadata", metadata, reference)
+
+    return JsonResponse({"status": "success", "credited": float(credited_amount), "provider_received": float(provider_total_received)})
+
+@login_required
+def user_transactions(request):
+    """
+    List user transactions with optional search, date filtering, pagination,
+    and CSV export.
+    """
+    wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")
+
+    # Search
+    query = request.GET.get("q", "")
+    if query:
+        transactions = transactions.filter(
+            Q(reference__icontains=query) |
+            Q(transaction_type__icontains=query) |
+            Q(status__icontains=query)
+        )
+
+    # Date filtering
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+    if start_date:
+        sd = parse_date(start_date)
+        if sd:
+            transactions = transactions.filter(created_at__date__gte=sd)
+    if end_date:
+        ed = parse_date(end_date)
+        if ed:
+            transactions = transactions.filter(created_at__date__lte=ed)
+
+    # CSV export
+    if request.GET.get("export") == "csv":
+        response = HttpResponse(content_type="text/csv")
+        response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Reference", "Type", "Amount", "Status", "Date"])
+        for tx in transactions:
+            writer.writerow([
+                tx.reference,
+                tx.transaction_type,
+                float(tx.amount),
+                tx.status,
+                tx.created_at.strftime("%Y-%m-%d %H:%M")
+            ])
+        return response
+
+    # Pagination
+    paginator = Paginator(transactions, 20)  # 20 per page
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, "core/user_transactions.html", {
+        "wallet": wallet,
+        "transactions": page_obj,
+        "query": query,
+        "start_date": start_date,
+        "end_date": end_date,
+    })
+
+@login_required
+def wallet_balance_api(request):
+    wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    return JsonResponse({"balance": float(wallet.balance or 0)})
+
+@login_required
+def sell_data_view(request):
+    wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    return render(request, "core/sell_data.html", {"wallet": wallet})

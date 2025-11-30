@@ -6,7 +6,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&')
 DEBUG = os.environ.get('DEBUG', 'True') 
-ALLOWED_HOSTS = ['brightventurez.onrender.com', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    "Brightventurez.online",
+    "www.Brightventurez.online",
+    "localhost",
+    "127.0.0.1",
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -97,12 +102,23 @@ LOGIN_REDIRECT_URL = "/dashboard/"
 # ===============================
 # API KEYS (TEST KEYS YOU PROVIDED)
 # ===============================
+# Paystack
 PAYSTACK_SECRET_KEY = "sk_test_e54dd453161e97d551ee75ad99ffc6ab1ecf25dd"
-PAYSTACK_PUBLIC_KEY = "pk_test_1eedbe095ff5fb2a643afdd0d4a51d10e1849f45"
 PAYSTACK_BASE_URL = "https://api.paystack.co"
+PAYSTACK_CALLBACK_URL = "https://brightventurez.online/payment/verify/"  # production
+PROVIDER_SUBACCOUNT = "ACCT_q1us193ulmhcyzo"
 
-VTU_API_KEY = "3e1aafc7efe00b49a0f640049b7ac7"
-VTU_BASE_URL = "https://vtu.com.ng/API/"
+# VTU / ePins
+VTU_API_KEY = "QvT8G9HlAjB3PQjIBHe5AunEwJfGxwfGmBJV3wzg9uI2gMuF8C"
+VTU_BASE_URL = "https://api.epins.com.ng/sandbox/data/"
+VTU_AIRTIME_URL = "https://api.epins.com.ng/sandbox/airtime/"
+
+# platform split tuning (optional)
+PLATFORM_MIN_PROFIT = 150
+MIN_PLATFORM_PCT = 2
+MAX_PLATFORM_PCT = 30
+EXTERNAL_TIMEOUT = 20
+
 DATA_PAYOUT = {
     "500MB": 80.00,
     "1GB": 240.00,
