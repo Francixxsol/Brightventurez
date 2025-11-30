@@ -56,14 +56,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "brightventurez.wsgi.application"
 
-# Database configuration: Uses DATABASE_URL if set, otherwise SQLite
-DATABASE_URL = os.environ.get('DATABASE_URL')
+# Use external Render database URL for local dev or fallback
+DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://brightventurez_db_fseb_user:9FytJndFBDOnKXh1gdnfe5IupVA27BWJ@dpg-d4maak7pm1nc73cptdcg-a.oregon-postgres.render.com/brightventurez_db_fseb'
+)
+
 if DATABASE_URL:
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
             conn_max_age=600,
-            ssl_require=True
+            ssl_require=True  # keep True for security
         )
     }
 else:
@@ -75,7 +79,6 @@ else:
     }
 
 AUTH_PASSWORD_VALIDATORS = []
-
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Africa/Lagos"
 USE_I18N = True
