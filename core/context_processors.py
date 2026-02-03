@@ -14,7 +14,7 @@ def global_context(request):
         {"name": "Blessing", "text": "Cheapest data ever!"},
         {"name": "Chidi", "text": "Fast VTU top-up in seconds."},
         {"name": "Kemi", "text": "I sold my data, cash came instantly."},
-        {"name": "Uche", "text": "Bright Venturez is  ^=^t  ^=^t  ^=^t "},
+        {"name": "Uche", "text": "Bright Venturez is  digital gem"},
     ]
 
     return {
