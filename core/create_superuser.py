@@ -3,7 +3,7 @@ import django
 import os
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "brightventurez.settings")
-django.setup()
+
 
 from django.contrib.auth.models import User
 
