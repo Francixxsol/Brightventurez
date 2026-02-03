@@ -4,7 +4,6 @@ import os
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "brightventurez.settings")
 
-
 from django.contrib.auth.models import User
 
 username = "Bright"
