@@ -15,7 +15,7 @@
     .nav a { margin-right: 1rem; color: #cfcfff; text-decoration: none; font-weight: 500; }
     .nav a:hover { color: #fff; }
     .btn.primary { background: #3b3dbf; color: #fff; padding: 6px 14px; border-radius: 6px; }
-    .btn.ghost { background: transparent; border: 1px solid #cfcfff; color: #cfcfff; padding: 6px 12px; border-radius: 6px; }
+    .btn.ghost { background: transparent; border: 1px solid #cfcfff; color: #cfcfff; padding: 6px 12px; border-radius:6px;}
     .wallet-info { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius:6px; }
     .fund-btn { padding: 4px 10px; border-radius: 6px; font-weight: 600; background: #3b3dbf; color:#fff; text-decoration:none; }
     .fund-btn:hover { background: #292a7d; }
@@ -25,7 +25,7 @@
 
     /* Settings dropdown */
     .settings-menu { position: relative; display: inline-block; margin-left: 1rem; }
-    .menu-icon { cursor: pointer; font-size: 1.5rem; color: #cfcfff; user-select: none; display:flex; align-items:center; gap:4px; }
+    .menu-icon { cursor: pointer; font-size: 1.5rem; color: #cfcfff; user-select: none; display:flex; align-items:center; }
     .chevron { display:inline-block; transition: transform 0.3s ease; }
     .dropdown-menu { display: none; position: absolute; right: 0; top: 2.5rem; background: #1a1b3a;
       padding: 0.5rem 0; border-radius: 6px; list-style: none; min-width: 180px; box-shadow: 0 4px 8px rgba(0,0,0,0.3);
@@ -59,29 +59,34 @@
     {% if request.user.is_authenticated %}
       <span class="muted desktop-only">Hi, {{ request.user.first_name|default:request.user.username }}</span>
 
-      <!-- Settings / Hamburger Menu -->
-      <div class="settings-menu">
-        <div class="menu-icon" onclick="toggleMenu()">
-          ☰ <span class="chevron">▼</span>
-        </div>
-        <ul id="dropdownMenu" class="dropdown-menu">
-          <!-- Mobile wallet -->
-          <li class="mobile-only">
-            Balance: <span id="wallet-balance" style="font-weight:bold; color:#fff;">{{ wallet_balance }}</span>
-            <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
-          </li>
-          <li><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
-          <li><a href="{% url 'core:change_password' %}">Change Password</a></li>
-          <li><a href="{% url 'core:logout' %}">Logout</a></li>
-        </ul>
-      </div>
+<!-- Settings / Hamburger Menu -->
+<div class="settings-menu">
+  <div class="menu-icon" onclick="toggleMenu()">
+    ☰ <span class="chevron">▼</span>
+  </div>
+  <ul id="dropdownMenu" class="dropdown-menu">
+    <li class="mobile-only">
+      Balance: <strong style="color:#fff;">{{ wallet_balance }}</strong>
+      <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
+    </li>
+    <li><a href="{% url 'core:dashboard' %}">Dashboard</a></li>
+    <li><a href="{% url 'core:user_transactions' %}">My Transactions</a></li>
+    <li><a href="{% url 'core:change_password' %}">Change Password</a></li>
+    <li><a href="{% url 'core:about' %}">About Us</a></li>
+    <li><a href="{% url 'core:services' %}">Our Services</a></li>
+    <li><a href="{% url 'core:contact' %}">Contact & Support</a></li>
+    <li><a href="{% url 'core:logout' %}">Logout</a></li>
+  </ul>
+</div>
 
-      <!-- Desktop wallet info -->
-      <div class="wallet-info desktop-only">
-        Balance: <span id="wallet-balance" style="font-weight:bold; color:#fff;">{{ wallet_balance }}</span>
-        <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
-        <a class="fund-btn" href="{% url 'core:dashboard' %}">Dashboard</a>
-      </div>
+<!-- Desktop wallet info -->
+<div class="wallet-info desktop-only">
+  Balance: <strong style="color:#fff;">{{ wallet_balance }}</strong>
+  <a class="fund-btn" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
+  <a class="fund-btn" href="{% url 'core:dashboard' %}">Dashboard</a>
+  <a class="fund-btn" href="{% url 'core:user_transactions' %}">My Transactions</a>
+</div>
+
     {% else %}
       <a class="btn ghost" href="{% url 'core:login' %}">Login</a>
       <a class="btn primary" href="{% url 'core:register' %}">Create Account</a>
@@ -97,13 +102,12 @@
 </main>
 
 <footer class="footer">
-  <div class="muted">All rights reserved Bright Venturez 2025</div>
+<div class="muted">All rights reserved Bright Venturez 2025 - 2026</div>
   <div class="muted">Dark Indigo UI</div>
 </footer>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  // Wallet animation
   const walletEl = document.getElementById("wallet-balance");
   let currentBalance = parseFloat(walletEl.textContent) || 0;
 
@@ -113,7 +117,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const start = currentBalance;
     const change = newBalance - start;
     const startTime = performance.now();
-
     function update(time) {
       const elapsed = time - startTime;
       const progress = Math.min(elapsed / duration, 1);
@@ -135,7 +138,6 @@ document.addEventListener("DOMContentLoaded", function() {
   setInterval(updateWallet, 10000);
 });
 
-// Dropdown toggle with chevron rotation
 function toggleMenu() {
   const menu = document.getElementById('dropdownMenu');
   const chevron = document.querySelector('.chevron');

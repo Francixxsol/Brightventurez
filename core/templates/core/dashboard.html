@@ -3,19 +3,21 @@
 
 <!-- Settings (hamburger) menu -->
 <div class="settings-menu">
-  <div class="menu-icon" onclick="toggleMenu()">☰</div>
+  <div class="menu-icon" onclick="toggleMenu()"> ☰ </div>
 
   <div class="dropdown-menu" id="dropdownMenu">
-    <a href="{% url 'password_change' %}">Change Password</a>
-    <a href="{% url 'logout' %}">Logout</a>
-    <!-- Future options -->
+      <a href="{% url 'password_change' %}">Change Password</a>
+      <a href="{% url 'core:user_transactions' %}">My Transactions</a>
+      <a href="{% url 'logout' %}">Logout</a>
   </div>
 </div>
 
 <section class="card hero">
   <h1>Welcome {{ request.user.first_name|default:request.user.username }}</h1>
+
   <p class="sub">
-    Cheaper Data. Faster VTU. Data → Cash. Wallet: ₦{{ wallet_balance }}
+    Cheaper Data. Faster VTU. Data for Cash. Wallet:
+    <strong>{{ wallet_balance }}</strong>
   </p>
 
   <div class="row gap">
@@ -25,6 +27,41 @@
     <a class="btn ghost" href="{% url 'core:fund_wallet' %}">Fund Wallet</a>
   </div>
 </section>
+
+<div class="card">
+    <h3>Latest Transactions</h3>
+
+    {% if latest_txns %}
+        <ul>
+        {% for tx in latest_txns %}
+            <li>
+                <strong>{{ tx.reference }}</strong> –
+                {{ tx.transaction_type|title }} –
+                {{ tx.amount }}
+
+                <span style="color:
+                    {% if tx.status == 'SUCCESS' %}
+                        #4CAF50
+                    {% else %}
+                        #FF5252
+                    {% endif %}
+                ">
+                    {{ tx.status }}
+                </span>
+
+                <br>
+                <small>{{ tx.created_at|date:"M d, Y H:i" }}</small>
+            </li>
+        {% endfor %}
+        </ul>
+
+        <a class="fund-btn" href="{% url 'core:user_transactions' %}">
+            View All
+        </a>
+    {% else %}
+        <p>No transactions yet.</p>
+    {% endif %}
+</div>
 
 <section class="card">
   <h3>User Reviews</h3>

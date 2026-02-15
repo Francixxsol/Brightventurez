@@ -2,17 +2,20 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.db.models.signals import post_save
+from decimal import Decimal
 from django.dispatch import receiver
 
 # -------------------------------
-# Network Choices
+# Global Choices
 # -------------------------------
-NETWORK_CHOICES = [
-    ("MTN", "MTN"),
-    ("AIRTEL", "Airtel"),
-    ("GLO", "Glo"),
-    ("9MOBILE", "9mobile"),
-]
+NETWORK_CHOICES = (
+        ("01", "MTN"),
+        ("02", "GLO"),
+        ("03", "9MOBILE"),
+        ("04", "AIRTEL"),
+        ("smile", "SMILE"),
+    )
+
 
 TRANSACTION_TYPE = [
     ("Airtime Purchase", "Airtime Purchase"),
@@ -36,7 +39,7 @@ REQUEST_STATUS = [
 # -------------------------------
 # Wallet Model
 # -------------------------------
-# models.py
+
 class Wallet(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -48,64 +51,113 @@ class Wallet(models.Model):
         verbose_name = "Wallet"
         verbose_name_plural = "Wallets"
 
+
+# -------------------------------
+# Wallet Transaction History
+# -------------------------------
 class WalletTransaction(models.Model):
-    TRANSACTION_TYPE_CHOICES = (
-        ('credit', 'Credit'),
-        ('debit', 'Debit'),
+
+    TRANSACTION_TYPES = (
+        ("credit", "Credit"),
+        ("debit", "Debit"),
+        ("airtime", "Airtime"),
+        ("data", "Data"),
+    )
+
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("success", "Success"),
+        ("failed", "Failed"),
+        ("refunded", "Refunded"),
     )
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPE_CHOICES)
-    description = models.CharField(max_length=255)
-    reference = models.CharField(max_length=100, blank=True, null=True)
-    timestamp = models.DateTimeField(auto_now_add=True)
+    reference = models.CharField(max_length=100, unique=True)
+    transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username} - {self.transaction_type} ₦{self.amount}"
-# -------------------------------
-# Plan Type Choices
-# -------------------------------
-PLAN_TYPE_CHOICES = [
-    ('SME', 'SME'),
-    ('GIFTING', 'Gifting'),
-]
+        return f"{self.user.username} | {self.transaction_type} | ₦{self.amount} | {self.status}"
 
+# -------------------------------
+# Price Table (Data Plans)
+# -------------------------------
 class PriceTable(models.Model):
-    network = models.CharField(max_length=20, choices=NETWORK_CHOICES)
-    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES, default="SME")  # <- changed
+
+    PLAN_TYPE_CHOICES = [
+        ("SME", "SME"),
+        ("GIFTING", "Gifting"),
+        ("CG", "Corporate Gifting"),
+        ("CG_LITE", "CG Lite"),
+        ("AWOOF", "Awoof Gifting"),
+        ("DIRECT", "Direct Data"),
+        ("DATACARD", "Data Card"),
+        ("SMILE_DIRECT", "Smile Direct"),
+    ]
+
+    NETWORK_CHOICES = [
+        ("MTN", "MTN"),
+        ("GLO", "GLO"),
+        ("AIRTEL", "AIRTEL"),
+        ("9MOBILE", "9MOBILE"),
+        ("SMILE", "SMILE"),
+    ]
+
+    network = models.CharField(
+        max_length=20,
+        choices=NETWORK_CHOICES
+    )
+
+    # ✅ MUST be integer for ePins
+    network_id = models.PositiveIntegerField(
+        help_text="ePins numeric network ID (e.g. MTN=1, GLO=2, 9MOBILE=3, AIRTEL=4)"
+    )
+
+    plan_type = models.CharField(
+        max_length=20,
+        choices=PLAN_TYPE_CHOICES,
+        default="SME"
+    )
+
     plan_name = models.CharField(max_length=100)
-    duration = models.CharField(max_length=20, blank=True, null=True)  # <-- new field
-    vtu_cost = models.DecimalField(max_digits=10, decimal_places=2)
-    my_price = models.DecimalField(max_digits=10, decimal_places=2)
-    api_code = models.CharField(max_length=50, blank=True, null=True)
+
+    duration = models.CharField(
+        max_length=20,
+        blank=True,
+        null=True
+    )
+
+    vtu_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0
+    )
+
+    my_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    # ✅ MUST be integer for ePins (this is DataPlan)
+    plan_code = models.PositiveIntegerField(
+        help_text="ePins epincode / DataPlan ID"
+    )
+
+    # Smile requires direct endpoint
+    smile_direct = models.BooleanField(default=False)
+
+    active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.network} - {self.plan_type} - {self.plan_name}"  # <- updated to plan_type
+        return f"{self.network} | {self.plan_type} | {self.plan_name} | ₦{self.my_price}"
 
     class Meta:
         verbose_name = "Price Table"
         verbose_name_plural = "Price Tables"
 
-# -------------------------------
-# Transaction (Wallet + Airtime/Data + Funding)
-# -------------------------------
-class Transaction(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    transaction_type = models.CharField(max_length=50, choices=TRANSACTION_TYPE)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=20, choices=TRANSACTION_STATUS, default="Pending")
-    reference = models.CharField(max_length=100, unique=True)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return f"{self.user.username} - {self.transaction_type} - ₦{self.amount}"
-
-    class Meta:
-        verbose_name = "Transaction"
-        verbose_name_plural = "Transactions"
-
-# -------------------------------
 # Sell Request (for manual sales or top-ups)
 # -------------------------------
 class SellRequest(models.Model):
@@ -134,3 +186,33 @@ def create_user_wallet(sender, instance, created, **kwargs):
 @receiver(post_save, sender=User)
 def save_user_wallet(sender, instance, **kwargs):
     instance.wallet.save()
+
+class VTUTransaction(models.Model):
+
+    STATUS_CHOICES = [
+        ("PENDING", "Pending"),
+        ("SUCCESS", "Success"),
+        ("FAILED", "Failed"),
+        ("REFUNDED", "Refunded"),
+    ]
+
+    user = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    reference = models.CharField(max_length=50, unique=True)
+
+    service = models.CharField(max_length=20)  # airtime / data
+    network = models.CharField(max_length=20)
+
+    phone = models.CharField(max_length=20)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="PENDING"
+    )
+
+    response = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.reference} - {self.status}"

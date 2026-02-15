@@ -3,9 +3,20 @@
 
 <section class="card">
   <h2>Buy Data</h2>
-  <p>Wallet Balance: ₦{{ wallet.balance|floatformat:2 }}</p>
 
-  <form method="POST" id="buyDataForm" action="{% url 'core:buy_data' %}">
+  <p class="wallet">
+    Wallet Balance: <strong>₦ {{ wallet.balance|floatformat:2 }}</strong>
+  </p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {{ message.tags }}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="POST" action="{% url 'core:buy_data' %}">
     {% csrf_token %}
 
     <label>Select Network</label>
@@ -17,13 +28,13 @@
       <option value="9MOBILE">9mobile</option>
     </select>
 
-    <label>Select Data Type</label>
+   <label>Select Data Type</label>
     <select name="data_type" id="data_type" required>
       <option value="">-- Select Data Type --</option>
       <option value="SME">SME</option>
-      <option value="SME2">SME2</option>
-      <option value="GIFTING">GIFTING</option>
-      <option value="AWUF">AWUF</option>
+      <option value="CG">Corporate</option>
+      <option value="GIFTING">Gifting</option>
+    <option value="CG_LITE">CGlite</option>
     </select>
 
     <label>Select Plan</label>
@@ -31,162 +42,82 @@
       <option value="">-- Select Plan --</option>
     </select>
 
-    <label>Enter Phone:</label>
+    <label>Enter Phone</label>
     <input type="text" name="phone" placeholder="080..." required>
 
-    <button type="submit" id="buyButton">Buy Data</button>
+    <button type="submit">Buy Data</button>
   </form>
 </section>
 
-<!-- ===== Styles ===== -->
 <style>
-  .spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    border-top-color: transparent;
-    margin-left: 6px;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  button[disabled] {
-    background-color: #ccc;
-    cursor: not-allowed;
-  }
-  .toast {
-    position: fixed;
-    left: 50%;
-    bottom: -100px;
-    transform: translateX(-50%);
-    background: #fff;
-    color: #000;
-    padding: 16px 22px;
-    border-radius: 10px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-width: 280px;
-    z-index: 9999;
-    animation: slideUp 0.5s ease forwards;
-  }
-  .toast.success { border-left: 6px solid #28a745; }
-  .toast.error { border-left: 6px solid #dc3545; }
-  .toast button {
-    background: none;
-    border: none;
-    color: #888;
-    font-size: 18px;
-    cursor: pointer;
-    padding: 0;
-  }
-  @keyframes slideUp {
-    from { bottom: -100px; opacity: 0; }
-    to { bottom: 30px; opacity: 1; }
-  }
-  @keyframes slideDown {
-    from { bottom: 30px; opacity: 1; }
-    to { bottom: -100px; opacity: 0; }
-  }
+.card{
+  max-width:420px;
+  margin:30px auto;
+  padding:20px;
+  background:#1a1b3a;
+  color:#fff;
+  border-radius:16px;
+}
+.card h2{text-align:center;margin-bottom:10px;}
+.wallet{text-align:center;margin-bottom:15px;}
+label{display:block;margin-top:12px;font-size:14px;}
+select,input{
+  width:100%;
+  padding:10px;
+  border-radius:8px;
+  border:none;
+  margin-top:6px;
+}
+button{
+  margin-top:18px;
+  width:100%;
+  padding:12px;
+  background:#4b6cb7;
+  border:none;
+  border-radius:10px;
+  color:#fff;
+  font-weight:600;
+}
+.alert{
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+  font-weight:600;
+}
+.alert.success{background:#0abf53;}
+.alert.error{background:#d9534f;}
+.alert.warning{background:#f0a500;}
 </style>
 
-<!-- ===== Script ===== -->
 <script>
-  const networkSelect = document.getElementById("network");
-  const dataTypeSelect = document.getElementById("data_type");
-  const planSelect = document.getElementById("plan_id");
-  const buyButton = document.getElementById("buyButton");
-  const form = document.getElementById("buyDataForm");
+const network = document.getElementById("network");
+const dataType = document.getElementById("data_type");
+const planSelect = document.getElementById("plan_id");
 
-  function resetPlanSelect(message = "-- Select Plan --") {
-    planSelect.innerHTML = "";
-    const opt = document.createElement("option");
-    opt.textContent = message;
-    opt.disabled = message !== "-- Select Plan --";
-    opt.selected = true;
-    planSelect.appendChild(opt);
-  }
+function loadPlans(){
+  if(!network.value || !dataType.value) return;
 
-  function loadPlans() {
-    const network = networkSelect.value;
-    const dataType = dataTypeSelect.value;
+  planSelect.innerHTML = "<option>Loading...</option>";
 
-    resetPlanSelect("Loading plans...");
+  fetch(`/get_plans/?network=${network.value}&data_type=${dataType.value}`)
+    .then(res => res.json())
+    .then(data => {
+      planSelect.innerHTML = "";
+      if(data.plans.length){
+        data.plans.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = `${p.plan_name} (${p.duration || ""}) – ₦${p.my_price}`;
+          planSelect.appendChild(opt);
+        });
+      }else{
+        planSelect.innerHTML = "<option>No plans available</option>";
+      }
+    });
+}
 
-    if (!network || !dataType) {
-      resetPlanSelect("-- Select Plan --");
-      return;
-    }
-
-    fetch(`/get_plans/?network=${network}&data_type=${dataType}`)
-      .then(res => res.json())
-      .then(data => {
-        planSelect.innerHTML = "";
-        if (data.plans && data.plans.length > 0) {
-          data.plans.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.id;
-            opt.textContent = `${p.plan_name} ${p.duration ? "- " + p.duration : ""} – ₦${p.selling_price}`;
-            planSelect.appendChild(opt);
-          });
-        } else {
-          resetPlanSelect("No plans available");
-        }
-      })
-      .catch(() => resetPlanSelect("Error loading plans"));
-  }
-
-  networkSelect.addEventListener("change", loadPlans);
-  dataTypeSelect.addEventListener("change", loadPlans);
-
-  function showToast(type, message) {
-    const toast = document.createElement("div");
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `
-      <span>${message}</span>
-      <button>&times;</button>
-    `;
-    document.body.appendChild(toast);
-    const closeBtn = toast.querySelector("button");
-    const removeToast = () => {
-      toast.style.animation = "slideDown 0.5s ease forwards";
-      setTimeout(() => toast.remove(), 500);
-    };
-    closeBtn.onclick = removeToast;
-    setTimeout(removeToast, 4000);
-  }
-
-  form.addEventListener("submit", e => {
-    e.preventDefault();
-    buyButton.disabled = true;
-    buyButton.innerHTML = 'Processing <span class="spinner"></span>';
-
-    const formData = new FormData(form);
-
-    fetch(form.action, { method: "POST", body: formData })
-      .then(res => res.json())
-      .then(response => {
-        if (response.success) {
-          showToast("success", response.message || "Data purchase successful!");
-          form.reset();
-          resetPlanSelect("-- Select Plan --");
-        } else {
-          showToast("error", response.message || "Transaction failed!");
-        }
-      })
-      .catch(() => showToast("error", "An error occurred! Try again."))
-      .finally(() => {
-        buyButton.disabled = false;
-        buyButton.innerHTML = "Buy Data";
-      });
-  });
+network.addEventListener("change", loadPlans);
+dataType.addEventListener("change", loadPlans);
 </script>
 
 {% endblock %}

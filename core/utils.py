@@ -1,6 +1,6 @@
-# core/utils.py
 import json
 import uuid
+import time
 import requests
 from decimal import Decimal, InvalidOperation
 
@@ -12,9 +12,9 @@ from .models import (
     Wallet
 )
 
-# --------------------------
+# ======================================================
 # SAFE DECIMAL PARSER
-# --------------------------
+# ======================================================
 def parse_decimal(value, default=Decimal("0.00")):
     try:
         return Decimal(str(value))
@@ -22,9 +22,9 @@ def parse_decimal(value, default=Decimal("0.00")):
         return default
 
 
-# --------------------------
+# ======================================================
 # JSON SAFE PARSER
-# --------------------------
+# ======================================================
 def json_or_text(resp):
     try:
         return resp.json()
@@ -32,10 +32,19 @@ def json_or_text(resp):
         return {"text": getattr(resp, "text", "")}
 
 
-# --------------------------
-# FETCH PLANS FROM PROVIDER
-# Auto-sync Provider → ProviderPlan
-# --------------------------
+# ======================================================
+# TIMESTAMPED REFERENCE GENERATOR
+# ALWAYS UNIQUE
+# Example: 7f23ab3c-91f2-4d39-aa33-2b8a08e93712-1733800201
+# ======================================================
+def generate_reference():
+    return f"{uuid.uuid4()}-{int(time.time())}"
+
+
+# ======================================================
+# FETCH PROVIDER PLANS
+# Sync provider → ProviderPlan
+# ======================================================
 def fetch_provider_plans(provider_id):
     provider = Provider.objects.get(id=provider_id)
     headers = {"Authorization": f"Bearer {provider.api_key}"}
@@ -52,8 +61,6 @@ def fetch_provider_plans(provider_id):
 
     data = response.json()
 
-    # Assuming provider returns list of plans like:
-    # { "plans": [ { "code": "", "name": "", "network": "", "size": "", "price": "" } ] }
     for plan in data.get("plans", []):
         ProviderPlan.objects.update_or_create(
             provider=provider,
@@ -69,11 +76,15 @@ def fetch_provider_plans(provider_id):
     return {"status": True}
 
 
-# --------------------------
-# BUY DATA (supports VIRTUAL & PROVIDER plans)
-# --------------------------
+# ======================================================
+# BUY DATA (Virtual + Provider)
+# Returns DataTransaction object
+# Supported statuses:
+#  - SUCCESS
+#  - FAILED
+#  - PENDING
+# ======================================================
 def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
-    ref = str(uuid.uuid4()).replace("-", "")[:12]  # short unique ref
 
     # --------------------------
     # SELECT PLAN TYPE
@@ -91,7 +102,7 @@ def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
         plan_name = plan.plan_name
 
     # --------------------------
-    # CREATE TRANSACTION
+    # CREATE NEW TRANSACTION (PENDING)
     # --------------------------
     txn = DataTransaction.objects.create(
         user=user,
@@ -123,10 +134,21 @@ def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
         res = requests.post(url, json=payload, headers=headers, timeout=40)
         data = json_or_text(res)
 
+        # Store response
         txn.provider_response = json.dumps(data)
 
-        if res.status_code == 200 and str(data.get("status")).lower() in ["success", "ok"]:
-            txn.status = "SUCCESS"
+        # --------------------------
+        # DECIDE TRANSACTION STATUS
+        # --------------------------
+        provider_status = str(data.get("status", "")).lower()
+
+        if res.status_code == 200:
+            if provider_status in ["success", "successful", "ok", "completed"]:
+                txn.status = "SUCCESS"
+            elif provider_status in ["pending", "processing"]:
+                txn.status = "PENDING"
+            else:
+                txn.status = "FAILED"
         else:
             txn.status = "FAILED"
 
@@ -139,12 +161,22 @@ def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
         txn.save()
         return txn
 
+def generate_reference(prefix="TXN"):
+    """
+    Generate a unique transaction reference.
+    Example: TXN-1702308392-9f1b2c
+    """
+    ts = int(time.time())
+    unique_id = uuid.uuid4().hex[:6].upper()
+    return f"{prefix}-{ts}-{unique_id}"
 
-# --------------------------
+
+# ======================================================
 # GET OR CREATE USER WALLET
-# --------------------------
+# ======================================================
 def get_or_create_wallet(user):
     wallet, created = Wallet.objects.get_or_create(
-        user=user, defaults={"balance": Decimal("0.00")}
+        user=user,
+        defaults={"balance": Decimal("0.00")}
     )
     return wallet

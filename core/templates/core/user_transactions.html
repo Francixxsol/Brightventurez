@@ -1,88 +1,184 @@
 {% extends "core/base.html" %}
+{% load static %}
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <h2 class="text-2xl font-bold mb-4 text-gray-800">Your Transactions</h2>
 
-    <!-- Filter & Export Form -->
-    <form method="get" class="mb-4 flex flex-wrap gap-2 items-center">
-        <input type="text" name="q" value="{{ query|default:'' }}"
-               placeholder="Search by reference, type, status..."
-               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+<style>
+/* --- CARD STYLING --- */
+.tx-card {
+    background: #1a1b3a;
+    color: #e0e0ff;
+    border-radius: 15px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    cursor: pointer;
+}
+.tx-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+}
+.tx-amount { font-size: 18px; font-weight: 700; }
+.tx-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #292a7d;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    margin-right: 12px;
+}
+.success { color: #4CAF50; font-weight: 600; }
+.pending { color: #f0a500; font-weight: 600; }
+.failed { color: #d9534f; font-weight: 600; }
+.filter-tab {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid #4b6cb7;
+    margin-right: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #cfcfff;
+    transition: 0.2s ease;
+}
+.filter-tab.active {
+    background: #4b6cb7;
+    border-color: #4b6cb7;
+    color: #fff;
+}
 
-        <input type="date" name="start_date" value="{{ start_date|default:'' }}"
-               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+/* MODAL */
+.modal-custom {
+    background: rgba(0,0,0,0.7);
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+.modal-card {
+    background: #1a1b3a;
+    color: #e0e0ff;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 15px;
+    padding: 25px;
+    text-align: center;
+}
 
-        <input type="date" name="end_date" value="{{ end_date|default:'' }}"
-               class="px-4 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300">
+/* NETWORK LOGO */
+.net-logo { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; margin-top: 4px; }
 
-        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Filter</button>
+/* WALLET BOX */
+.wallet-box {
+    background: linear-gradient(135deg,#4b6cb7,#182848);
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+</style>
 
-        {% if transactions %}
-        <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}export=csv"
-           class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">Export CSV</a>
-        {% endif %}
-    </form>
+<div class="container mt-4">
+
+    <!-- WALLET DISPLAY -->
+    <div class="wallet-box">
+        <h5>Your Wallet Balance</h5>
+        <h1>₦ {{ wallet.balance }}</h1>
+    </div>
+
+    <!-- FILTER TABS -->
+    <div class="d-flex mb-3 flex-wrap">
+        <div class="filter-tab active" onclick="filterTx('all')">All</div>
+        <div class="filter-tab" onclick="filterTx('wallet_fund')">Wallet</div>
+        <div class="filter-tab" onclick="filterTx('airtime')">Airtime</div>
+        <div class="filter-tab" onclick="filterTx('data')">Data</div>
+        <div class="filter-tab" onclick="filterTx('bills')">Bills</div>
+    </div>
 
     {% if transactions %}
-    <div class="overflow-x-auto">
-        <table class="min-w-full bg-white border border-gray-200 shadow-sm rounded-lg">
-            <thead class="bg-gray-100">
-                <tr>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">#</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Reference</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Type</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Amount</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Status</th>
-                    <th class="px-4 py-2 text-left text-sm font-medium text-gray-700">Date</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-                {% for tx in transactions %}
-                <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-2 text-sm text-gray-700">{{ forloop.counter }}</td>
-                    <td class="px-4 py-2 text-sm text-gray-700">{{ tx.reference }}</td>
-                    <td class="px-4 py-2 text-sm text-gray-700">{{ tx.transaction_type }}</td>
-                    <td class="px-4 py-2 text-sm text-gray-700">₦{{ tx.amount }}</td>
-                    <td class="px-4 py-2 text-sm">
-                        {% if tx.status == "Successful" %}
-                            <span class="px-2 py-1 rounded-full bg-green-100 text-green-800 font-semibold">{{ tx.status }}</span>
-                        {% elif tx.status == "Pending" %}
-                            <span class="px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 font-semibold">{{ tx.status }}</span>
+        {% for tx in transactions %}
+        <div class="tx-card tx-item" data-type="{{ tx.transaction_type|lower }}"
+             onclick="openModal('{{ tx.reference }}','{{ tx.transaction_type }}','₦{{ tx.amount }}','{{ tx.status|title }}','{{ tx.created_at|date:"F j, Y - H:i A" }}')">
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <div class="tx-icon">
+                        {% if tx.transaction_type == "airtime" %}
+                            📞
+                        {% elif tx.transaction_type == "data" %}
+                            📶
+                        {% elif tx.transaction_type == "wallet_fund" %}
+                            💰
                         {% else %}
-                            <span class="px-2 py-1 rounded-full bg-red-100 text-red-800 font-semibold">{{ tx.status }}</span>
+                            ⚡
                         {% endif %}
-                    </td>
-                    <td class="px-4 py-2 text-sm text-gray-500">{{ tx.created_at|date:"Y-m-d H:i" }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                    </div>
+                    <div>
+                        <strong>{{ tx.transaction_type|title }}</strong><br>
+                        <span style="font-size: 12px; color: #cfcfff;">Ref: {{ tx.reference }}</span><br>
+                        {% if tx.network %}
+                        <img class="net-logo" src="{% static 'networks/' %}{{ tx.network|lower }}.png" onerror="this.style.display='none'">
+                        {% endif %}
+                    </div>
+                </div>
 
-    <!-- Pagination -->
-    <div class="mt-4 flex justify-center space-x-2">
-        {% if transactions.has_previous %}
-            <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ transactions.previous_page_number }}" 
-               class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">&laquo; Prev</a>
-        {% endif %}
+                <div class="text-end">
+                    <div class="tx-amount">₦ {{ tx.amount }}</div>
+                    {% if tx.status == "success" %}
+                        <div class="success">Successful</div>
+                    {% elif tx.status == "failed" %}
+                        <div class="failed">Failed</div>
+                    {% else %}
+                        <div class="pending">Pending</div>
+                    {% endif %}
+                </div>
+            </div>
 
-        {% for num in transactions.paginator.page_range %}
-            {% if transactions.number == num %}
-                <span class="px-3 py-1 bg-blue-600 text-white rounded">{{ num }}</span>
-            {% elif num >= transactions.number|add:"-2" and num <= transactions.number|add:"2" %}
-                <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ num }}" 
-                   class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">{{ num }}</a>
-            {% endif %}
+        </div>
         {% endfor %}
-
-        {% if transactions.has_next %}
-            <a href="?{% if query %}q={{ query }}&{% endif %}{% if start_date %}start_date={{ start_date }}&{% endif %}{% if end_date %}end_date={{ end_date }}&{% endif %}page={{ transactions.next_page_number }}" 
-               class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Next &raquo;</a>
-        {% endif %}
-    </div>
-
     {% else %}
-        <p class="text-gray-600">No transactions found.</p>
+        <p class="text-center mt-4">No transactions yet.</p>
     {% endif %}
+
 </div>
+
+<!-- MODAL -->
+<div id="txModal" class="modal-custom" onclick="closeModal()">
+    <div class="modal-card" onclick="event.stopPropagation()">
+        <h4 id="m_type"></h4>
+        <h2 id="m_amount"></h2>
+        <p>Status: <span id="m_status"></span></p>
+        <p>Date: <span id="m_date"></span></p>
+        <p>Reference: <span id="m_ref"></span></p>
+        <button class="btn btn-dark mt-3" onclick="closeModal()">Close</button>
+    </div>
+</div>
+
+<script>
+function filterTx(type) {
+    document.querySelectorAll(".filter-tab").forEach(t => t.classList.remove("active"));
+    event.target.classList.add("active");
+    document.querySelectorAll(".tx-item").forEach(item => {
+        if (type === "all" || item.dataset.type === type) item.style.display = "block";
+        else item.style.display = "none";
+    });
+}
+
+function openModal(ref, type, amount, status, date) {
+    document.getElementById("m_ref").innerText = ref;
+    document.getElementById("m_type").innerText = type;
+    document.getElementById("m_amount").innerText = amount;
+    document.getElementById("m_status").innerText = status;
+    document.getElementById("m_date").innerText = date;
+    document.getElementById("txModal").style.display = "flex";
+}
+
+function closeModal() {
+    document.getElementById("txModal").style.display = "none";
+}
+</script>
+
 {% endblock %}

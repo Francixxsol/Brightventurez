@@ -1,37 +1,97 @@
 {% extends "core/base.html" %}
-
+{% load static %}
 {% block content %}
-<section class="card">
-  <h2>Buy Airtime</h2>
-  <p><strong>Wallet Balance:</strong> ₦{{ wallet.balance }}</p>
 
-  <form method="POST">
-    {% csrf_token %}
+<style>
+/* --- LEVEL 3 BUY AIRTIME STYLING --- */
+.container { max-width: 900px; margin: auto; padding: 20px; }
+.card { background: #1a1b3a; border-radius: 12px; padding: 20px; margin-bottom: 20px; color: #fff; }
+.card h2 { margin-bottom: 15px; }
+.wallet-balance { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
+.input-field { margin-bottom: 15px; }
+.input-field label { display: block; margin-bottom: 5px; font-weight: 500; }
+.input-field input, .input-field select { width: 100%; padding: 10px; border-radius: 8px; border: none; }
+.btn-primary { background: #3b3dbf; color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
+.btn-primary:hover { background: #292a7d; }
+.alert { padding: 10px; margin-bottom: 15px; border-radius: 6px; }
+.alert-success { background: #0abf53; color: #fff; }
+.alert-error { background: #d9534f; color: #fff; }
+.alert-warning { background: #f0a500; color: #fff; }
+</style>
 
-    <label>Network:</label>
-    <select name="network" required>
-      <option value="">-- Select Network --</option>
-      <option value="MTN">MTN</option>
-      <option value="AIRTEL">AIRTEL</option>
-      <option value="GLO">GLO</option>
-      <option value="9MOBILE">9mobile</option>
-    </select>
+<div class="container">
 
-    <label>Phone Number:</label>
-    <input type="text" name="phone" placeholder="080..." required>
-
-    <label>Amount:</label>
-    <input type="number" name="amount" step="0.01" min="50" required>
-
-    <button type="submit" class="btn primary">Buy Airtime</button>
-  </form>
-
-  {% if messages %}
-    <div class="messages">
-      {% for message in messages %}
-        <p class="alert">{{ message }}</p>
-      {% endfor %}
+    <!-- Wallet Balance -->
+    <div class="card text-center">
+        <h2>Wallet Balance</h2>
+        <div class="wallet-balance">₦ {{ wallet_balance|floatformat:2 }}</div>
     </div>
-  {% endif %}
-</section>
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for m in messages %}
+            <div class="alert {% if m.tags %}alert-{{ m.tags }}{% endif %}">{{ m }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Airtime Form -->
+    <div class="card">
+        <h2>Buy Airtime</h2>
+        <form method="POST" action="{% url 'core:buy_airtime' %}">
+            {% csrf_token %}
+            <div class="input-field">
+                <label for="network">Network</label>
+                <select name="network" id="network" required>
+                    <option value="">Select Network</option>
+                    <option value="MTN">MTN</option>
+                    <option value="GLO">GLO</option>
+                    <option value="AIRTEL">AIRTEL</option>
+                    <option value="9MOBILE">9MOBILE</option>
+                </select>
+            </div>
+
+            <div class="input-field">
+                <label for="amount">Amount (₦)</label>
+                <input type="number" name="amount" id="amount" min="1" placeholder="Enter amount" required>
+            </div>
+
+            <div class="input-field">
+                <label for="phone">Phone Number</label>
+                <input type="tel" name="phone" id="phone" placeholder="08012345678" required>
+            </div>
+
+            <button type="submit" class="btn-primary">Buy Airtime</button>
+        </form>
+    </div>
+
+    <!-- Recent Transactions (optional) -->
+    {% if transactions %}
+    <div class="card">
+        <h2>Recent Transactions</h2>
+        {% for tx in transactions %}
+        <div class="tx-card" style="margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <strong>{{ tx.transaction_type|title }}</strong> - Ref: {{ tx.reference }}<br>
+                    <small>{{ tx.created_at|date:"F j, Y - H:i A" }}</small>
+                </div>
+                <div>
+                    ₦ {{ tx.amount|floatformat:2 }}<br>
+                    {% if tx.status == "success" %}
+                        <span class="success">Successful</span>
+                    {% elif tx.status == "failed" %}
+                        <span class="failed">Failed</span>
+                    {% else %}
+                        <span class="pending">Pending</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        <a class="btn-primary" href="{% url 'core:user_transactions' %}">View All Transactions</a>
+    </div>
+    {% endif %}
+
+</div>
+
 {% endblock %}

@@ -2,6 +2,9 @@
 import json
 import uuid
 from decimal import Decimal, InvalidOperation
+import random
+import time
+import string 
 
 from django.conf import settings
 from django.contrib import messages
@@ -14,13 +17,15 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-from django_q.tasks import async_task
 import csv
+from uuid import uuid4
+from core.utils import generate_reference
 from django.utils.dateparse import parse_date
 from .forms import RegisterForm
 from django.core.paginator import Paginator
 from django.db.models import Q
-from .models import PriceTable, Wallet, Transaction, SellRequest
+from .models import Wallet, WalletTransaction, PriceTable, SellRequest
+from .models import WalletTransaction as Transaction
 from .services import PaystackService, WalletService, VTUService, PROCESSING_FEE
 from .utils.helpers import parse_decimal
 User = get_user_model()
@@ -64,19 +69,42 @@ def register_view(request):
 # Login
 # -----------------------------
 @csrf_exempt
-def login_view(request):
-    if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
-        user = authenticate(request, username=username, password=password)
-        if user:
-            login(request, user)
-            # ensure wallet exists on login too (defensive)
-            Wallet.objects.get_or_create(user=user)
-            return redirect("core:dashboard")
-        messages.error(request, "Invalid username or password.")
-    return render(request, "core/login.html")
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect("core:dashboard")
 
+    if request.method == "POST":
+        form = RegisterForm(request.POST)
+        if form.is_valid():
+            # Save form but don’t commit yet
+            user = form.save(commit=False)
+
+            # Hash the password
+            user.set_password(form.cleaned_data.get("password"))
+            user.save()
+
+            # Ensure wallet exists immediately
+            Wallet.objects.get_or_create(user=user)
+
+            # Enqueue any heavy post-signup tasks
+            async_task("core.tasks.post_signup_tasks", user.id, hook=None)
+
+            # Authenticate and log the user in immediately
+            user = authenticate(
+                request,
+                username=form.cleaned_data.get("username"),
+                password=form.cleaned_data.get("password")
+            )
+            if user:
+                login(request, user)
+
+            messages.success(request, "Account created successfully! You are now logged in.")
+            return redirect("core:dashboard")  # or wherever you want users to land
+
+    else:
+        form = RegisterForm()
+
+    return render(request, "core/register.html", {"form": form})
 
 # -----------------------------
 # Logout
@@ -93,10 +121,17 @@ def logout_view(request):
 # -----------------------------
 @login_required
 def dashboard(request):
+    # Get or create wallet
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
-    transactions = Transaction.objects.filter(user=request.user).order_by("-created_at")[:25]
-    return render(request, "core/dashboard.html", {"wallet": wallet, "transactions": transactions})
 
+    # Fetch latest 3 transactions
+    latest_txns = Transaction.objects.filter(user=request.user).order_by('-created_at')[:3]
+
+    # Render dashboard template
+    return render(request, "core/dashboard.html", {
+        "wallet_balance": wallet.balance,
+        "latest_txns": latest_txns,
+    })
 
 # -----------------------------
 # Change password
@@ -151,45 +186,71 @@ class FundWalletView(View):
 # Verify payment (redirect after user completes on Paystack)
 # -----------------------------
 @csrf_exempt
-@login_required
 def verify_payment(request):
     reference = request.GET.get("reference")
     if not reference:
         messages.error(request, "Invalid payment reference.")
         return redirect("core:fund_wallet")
 
+    # 1. Verify on Paystack
     try:
         res = PaystackService.verify_transaction(reference)
-    except Exception as e:
-        messages.error(request, f"Error verifying payment: {e}")
+    except Exception as exc:
+        messages.error(request, f"Error verifying payment: {exc}")
         return redirect("core:fund_wallet")
 
-    if res.get("status") and res.get("data", {}).get("status") == "success":
-        amount_naira = Decimal(str(res["data"]["amount"] / 100))
-        credited = max(amount_naira - PROCESSING_FEE, Decimal("0.00"))
+    data = res.get("data", {})
 
-        # idempotency: ensure we haven't processed this reference before
-        if Transaction.objects.filter(reference=reference).exists():
-            messages.info(request, "Payment already processed.")
-            return redirect("core:dashboard")
+    if not res.get("status") or data.get("status") != "success":
+        messages.error(request, "Payment verification failed.")
+        return redirect("core:fund_wallet")
 
-        WalletService.credit_user(request.user, credited, reference=reference,
-                                  note=f"Funded via Paystack (gross ₦{amount_naira}, fee ₦{PROCESSING_FEE})")
-        messages.success(request, f"Wallet funded successfully with ₦{credited}")
+    # 2. Get user (session OR paystack metadata)
+    metadata = data.get("metadata", {})
+    user_id = metadata.get("user_id")
+
+    if request.user.is_authenticated:
+        user = request.user
+    else:
+        from django.contrib.auth.models import User
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            messages.error(request, "User not found for this transaction.")
+            return redirect("core:fund_wallet")
+
+    # 3. Compute amounts
+    gross = Decimal(str(data["amount"] / 100))
+    credited = max(gross - PROCESSING_FEE, Decimal("0"))
+
+    # 4. Prevent double-crediting
+    if Transaction.objects.filter(reference=reference).exists():
+        messages.info(request, "Payment already processed.")
         return redirect("core:dashboard")
 
-    messages.error(request, "Payment verification failed.")
-    return redirect("core:fund_wallet")
+    # 5. Wallet credit
+    note = f"Funded via Paystack (gross {gross}, fee {PROCESSING_FEE})"
 
+    WalletService.credit_user(
+        user=user,
+        amount=credited,
+        reference=reference,
+        note=note,
+        transaction_type="credit"
+    )
+
+    # 6. Final redirect
+    messages.success(request, f"Wallet funded successfully with ₦{credited}")
+    return redirect("core:dashboard")
 
 # -----------------------------
 # Buy data view (class)
-# -----------------------------
-@method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(login_required, name="dispatch")
 class BuyDataView(View):
+
     def get(self, request):
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        plans = PriceTable.objects.all()
+        plans = PriceTable.objects.all().order_by("network", "plan_name")
         return render(request, "core/buy_data.html", {"wallet": wallet, "plans": plans})
 
     def post(self, request):
@@ -198,65 +259,59 @@ class BuyDataView(View):
         phone = request.POST.get("phone")
 
         if not all([network, plan_id, phone]):
-            messages.error(request, "All fields are required.")
-            return redirect("core:buy_data")
+            return JsonResponse({"success": False, "message": "All fields are required."})
 
-        plan = VTUService.get_plan_object(plan_id)
+        plan = PriceTable.objects.filter(id=plan_id, network=network).first()
         if not plan:
-            messages.error(request, "Plan not found.")
-            return redirect("core:buy_data")
+            return JsonResponse({"success": False, "message": "Invalid plan selected."})
 
-        amount = Decimal(str(plan.my_price or plan.vtu_cost or 0))
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        amount = plan.my_price
 
-        # If user has enough in platform wallet — debit & call provider
-        if (wallet.balance or Decimal("0.00")) >= amount:
-            ok, tx = WalletService.debit_user(request.user, amount, reference=str(uuid.uuid4())[:12],
-                                             note=f"Auto data purchase: {plan.plan_name}")
-            if not ok:
-                messages.error(request, "Insufficient wallet balance.")
-                return redirect("core:buy_data")
+        if wallet.balance < amount:
+            return JsonResponse({"success": False, "message": "Insufficient wallet balance."})
 
-            provider_resp = VTUService.buy_data(plan.api_code or plan.plan_name, phone, plan.api_code or plan.plan_name)
-            success = False
-            if isinstance(provider_resp, dict):
-                if provider_resp.get("status") in ("success", True) or provider_resp.get("code") in (101, "101"):
-                    success = True
+        reference = generate_reference()
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        description = f"[{timestamp}] Data Purchase: {plan.network} {plan.plan_name} to {phone}"
 
-            if success:
-                messages.success(request, f"{network} data plan {plan.plan_name} sent to {phone} successfully!")
-            else:
-                messages.error(request, f"VTU API Error: {provider_resp}")
-            return redirect("core:buy_data")
+        # 1️⃣ Create PENDING transaction
+        tx = WalletTransaction.objects.create(
+            user=request.user,
+            reference=reference,
+            transaction_type="data",
+            amount=amount,
+            status="pending",
+            description=description
+        )
 
-        # Wallet insufficient => initialize Paystack checkout with dynamic split (auto-purchase intent)
-        metadata = {
-            "intent": "auto_purchase",
-            "user_id": request.user.id,
-            "purchase_type": "data",
-            "plan_id": plan.id,
-            "plan_name": plan.plan_name,
-            "phone": phone,
-            "amount": str(amount)
-        }
-        try:
-            res = PaystackService.initialize_transaction(request.user.email, amount, metadata)
-        except Exception as e:
-            messages.error(request, f"Could not initialize payment: {e}")
-            return redirect("core:buy_data")
+        # 2️⃣ Call VTUService
+        response = VTUService.buy_data_plan(plan.id, phone, request.user)
 
-        if res.get("status") and res.get("data", {}).get("authorization_url"):
-            return redirect(res["data"]["authorization_url"])
+        if not response.get("status"):
+            tx.status = "failed"
+            tx.save()
+            return JsonResponse({
+                "success": False,
+                "message": f"VTU Error: {response.get('description')}"
+            })
 
-        messages.error(request, "Unable to initialize payment. Try again.")
-        return redirect("core:buy_data")
+        # 3️⃣ Mark transaction as successful
+        tx.status = "success"
+        tx.save()
 
+        return JsonResponse({
+            "success": True,
+            "message": f"{plan.plan_name} successfully sent to {phone}",
+            "reference": reference
+        })
 
 # -----------------------------
 # Buy airtime view (class)
 # -----------------------------
-@method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(login_required, name="dispatch")
 class BuyAirtimeView(View):
+
     def get(self, request):
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
         return render(request, "core/buy_airtime.html", {"wallet": wallet})
@@ -264,83 +319,54 @@ class BuyAirtimeView(View):
     def post(self, request):
         network = request.POST.get("network")
         phone = request.POST.get("phone")
-        raw_amount = request.POST.get("amount")
+        amount = request.POST.get("amount")
+
+        if not all([network, phone, amount]):
+            return JsonResponse({"success": False, "message": "All fields are required."})
+
         try:
-            amount = Decimal(str(raw_amount))
-        except (InvalidOperation, TypeError):
-            messages.error(request, "Invalid amount")
-            return redirect("core:buy_airtime")
+            amount = Decimal(amount)
+        except:
+            return JsonResponse({"success": False, "message": "Invalid amount."})
 
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        if (wallet.balance or Decimal("0.00")) >= amount:
-            ok, tx = WalletService.debit_user(request.user, amount, reference=str(uuid.uuid4())[:12],
-                                             note=f"Airtime {network} to {phone}")
-            if not ok:
-                messages.error(request, "Insufficient wallet balance.")
-                return redirect("core:buy_airtime")
+        if wallet.balance < amount:
+            return JsonResponse({"success": False, "message": "Insufficient wallet balance."})
 
-            provider_resp = VTUService.buy_airtime(network, phone, amount)
-            success = False
-            if isinstance(provider_resp, dict):
-                if provider_resp.get("status") in ("success", True) or provider_resp.get("code") in (101, "101"):
-                    success = True
+        reference = generate_reference()
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        description = f"[{timestamp}] Airtime Purchase: {network} ₦{amount} to {phone}"
 
-            if success:
-                messages.success(request, f"Airtime ₦{amount} sent to {phone} ({network})")
-            else:
-                messages.error(request, f"VTU API Error: {provider_resp}")
-            return redirect("core:buy_airtime")
+        # 1️⃣ Create PENDING transaction
+        tx = WalletTransaction.objects.create(
+            user=request.user,
+            reference=reference,
+            transaction_type="airtime",
+            amount=amount,
+            status="pending",
+            description=description
+        )
 
-        # insufficient wallet -> init Paystack dynamic-split checkout
-        metadata = {
-            "intent": "auto_purchase",
-            "user_id": request.user.id,
-            "purchase_type": "airtime",
-            "phone": phone,
-            "amount": str(amount)
-        }
-        try:
-            res = PaystackService.initialize_transaction(request.user.email, amount, metadata)
-        except Exception as e:
-            messages.error(request, f"Could not initialize payment: {e}")
-            return redirect("core:buy_airtime")
+        # 2️⃣ Call VTUService
+        response = VTUService.buy_airtime(network, phone, amount, request.user)
 
-        if res.get("status") and res.get("data", {}).get("authorization_url"):
-            return redirect(res["data"]["authorization_url"])
+        if not response.get("status"):
+            tx.status = "failed"
+            tx.save()
+            return JsonResponse({
+                "success": False,
+                "message": f"VTU Error: {response.get('description')}"
+            })
 
-        messages.error(request, "Unable to initialize payment. Try again.")
-        return redirect("core:buy_airtime")
+        # 3️⃣ Mark transaction as successful
+        tx.status = "success"
+        tx.save()
 
-
-# -----------------------------
-# AJAX: get plans
-# -----------------------------
-@csrf_exempt
-def get_plans(request):
-    network = request.GET.get("network")
-    data_type = request.GET.get("data_type")
-    if not network or not data_type:
-        return JsonResponse({"error": "network and data_type required"}, status=400)
-
-    qs = PriceTable.objects.filter(network=network, plan_type=data_type).values(
-        "id", "plan_name", "vtu_cost", "my_price", "duration"
-    )
-    plans = []
-    for p in qs:
-        size = ""
-        for token in (p.get("plan_name") or "").split():
-            if "GB" in token or "MB" in token:
-                size = token
-                break
-        plans.append({
-            "id": p["id"],
-            "plan_name": p["plan_name"],
-            "size": size,
-            "duration": p.get("duration") or "",
-            "selling_price": float(p.get("my_price") or 0),
+        return JsonResponse({
+            "success": True,
+            "message": f"Airtime ₦{amount} successfully sent to {phone}",
+            "reference": reference
         })
-    return JsonResponse({"plans": plans})
-
 
 # -----------------------------
 # Paystack webhook (robust)
@@ -508,3 +534,37 @@ def wallet_balance_api(request):
 def sell_data_view(request):
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
     return render(request, "core/sell_data.html", {"wallet": wallet})
+
+@login_required
+def get_plans(request):
+    network = request.GET.get("network")
+    data_type = request.GET.get("data_type")  # your plan_type
+    plans = []
+
+    if network and data_type:
+        qs = PriceTable.objects.filter(network=network, plan_type=data_type)
+        for plan in qs:
+            plans.append({
+                "id": plan.id,
+                "plan_name": plan.plan_name,
+                "duration": plan.duration,
+                "my_price": float(plan.my_price),  # safe for JSON
+                "api_code": plan.api_code or plan.plan_name
+            })
+    return JsonResponse({"plans": plans})
+
+def generate_reference(length=12):
+    """
+    Generates a random alphanumeric reference for transactions.
+    """
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+
+
+def about(request):
+    return render(request, "core/about.html")
+
+def services(request):
+    return render(request, "core/services.html")
+
+def contact(request):
+    return render(request, "core/contact.html")

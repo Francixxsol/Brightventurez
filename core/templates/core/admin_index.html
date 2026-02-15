@@ -1,0 +1,18 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+
+<h1>Welcome to Brightventurez Admin</h1>
+
+<div style="margin-top: 40px;">
+    <h2>📊 Daily VTU Report</h2>
+    {% load vtu_report %}
+    {% render_vtu_report %}
+</div>
+
+{% block dashboard_content %}
+{{ block.super }}
+{% endblock %}
+
+{% endblock %}

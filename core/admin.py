@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Wallet, Transaction, PriceTable, SellRequest
+from .models import Wallet, WalletTransaction, PriceTable, SellRequest
+from django.urls import path
+from django.utils.html import format_html
+from django.template.response import TemplateResponse
 # ---------------------------------------------------
 # Inline Wallet under User (so you can see balance in user profile)
 # ---------------------------------------------------
@@ -54,13 +57,12 @@ class PriceTableAdmin(admin.ModelAdmin):
 # ---------------------------------------------------
 # Transaction Admin (for monitoring user activities)
 # ---------------------------------------------------
-@admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
     list_display = ('user', 'amount', 'transaction_type', 'status', 'created_at')
     list_filter = ('transaction_type', 'status')
     search_fields = ('user__username', 'transaction_type', 'status')
     list_per_page = 25
-
 
 # ---------------------------------------------------
 # Sell Request Admin (for manual sales or top-up requests)
@@ -75,3 +77,24 @@ class SellRequestAdmin(admin.ModelAdmin):
 admin.site.site_header = "BrightVenturez Admin"
 admin.site.site_title = "BrightVenturez Dashboard"
 admin.site.index_title = "Welcome to BrightVenturez VTU Panel"
+
+class CustomAdminSite(admin.AdminSite):
+    site_header = "Brightventurez Admin"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('vtu-report/', self.admin_view(self.vtu_report_view), name="vtu-report"),
+        ]
+        return custom_urls + urls
+
+    def vtu_report_view(self, request):
+        context = dict(
+            self.each_context(request),
+            report=report
+        )
+        return TemplateResponse(request, "admin/vtu_report.html", context)
+
+admin_site = CustomAdminSite(name='custom_admin')
+
+
