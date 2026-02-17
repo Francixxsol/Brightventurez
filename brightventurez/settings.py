@@ -60,12 +60,12 @@ WSGI_APPLICATION = "brightventurez.wsgi.application"
 
 # Use external Render database URL for local dev or fallback
 DATABASES = {
-    "default": dj_database_url.parse(
-        os.environ.get("DATABASE_URL"),
+    "default": dj_database_url.config(
         conn_max_age=600,
-        ssl_require=True,
+        ssl_require=True
     )
 }
+
 
 AUTH_PASSWORD_VALIDATORS = []
 LANGUAGE_CODE = "en-us"
