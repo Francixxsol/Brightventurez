@@ -13,6 +13,9 @@ ALLOWED_HOSTS = [
     "brightventurez-production.up.railway.app",
 ]
 
+SECRET_KEY="upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&"
+
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -104,9 +107,15 @@ PAYSTACK_BASE_URL = "https://api.paystack.co"
 PAYSTACK_CALLBACK_URL = "https://brightventurez.online/payment/verify/"  # production
 PROVIDER_SUBACCOUNT = "ACCT_q1us193ulmhcyzo"
 
-# VTU / ePins
-VTU_API_KEY = os.getenv("VTU_API_KEY")
-VTU_BASE_URL = os.getenv("VTU_BASE_URL")
+
+# VTU API configuration
+VTU_API_KEY="QvT8G9HlAjB3PQjIBHe5AunEwJfGxwfGmBJV3wzg9uI2gMuF8C"
+VTU_BASE_URL="https://api.epins.com.ng/sandbox"
+PROCESSING_FEE=40
+PLATFORM_MIN_PROFIT=150
+MIN_PLATFORM_PCT=2
+MAX_PLATFORM_PCT=30
+EXTERNAL_TIMEOUT=20
 
 # platform split tuning (optional)
 PLATFORM_MIN_PROFIT = 150
