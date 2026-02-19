@@ -1,8 +1,5 @@
 import os
 from pathlib import Path
-import dj_database_url
-
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")  # ✅ Load environment variables from your .env
@@ -15,13 +12,6 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
 
-DATABASES = {
-    "default": dj_database_url.config(
-        default=os.getenv("DATABASE_URL"),
-        conn_max_age=600,
-        ssl_require=True,
-    )
-}
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -64,6 +54,21 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "brightventurez.wsgi.application"
+
+#database
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "railway",
+        "USER": "postgres",
+        "PASSWORD": "PijaRoEQRViKviOkzSbDXLGQnLLlnvaB",
+        "HOST": "nozomi.proxy.rlwy.net",
+        "PORT": "54093",
+        "OPTIONS": {
+            "sslmode": "require",
+        },
+    }
+}
 
 
 AUTH_PASSWORD_VALIDATORS = []
