@@ -51,11 +51,17 @@ def register_view(request):
         form = RegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
-            # ensure wallet exists immediately (synchronous)
+
+            # ✅ Ensure wallet exists immediately (synchronous)
             Wallet.objects.get_or_create(user=user)
 
-            # enqueue any heavy post-signup tasks (welcome email, analytics, etc.)
-            async_task("core.tasks.post_signup_tasks", user.id, hook=None)
+            # 🔹 Optional: Only run async task if async_task is available
+            try:
+                from django_q.tasks import async_task
+                async_task("core.tasks.post_signup_tasks", user.id, hook=None)
+            except ImportError:
+                # Async task library not installed, skip for now
+                pass
 
             messages.success(request, "Account created successfully! You can now log in.")
             return redirect("core:login")
@@ -63,7 +69,6 @@ def register_view(request):
         form = RegisterForm()
 
     return render(request, "core/register.html", {"form": form})
-
 
 # -----------------------------
 # Login
