@@ -4,9 +4,8 @@ import dj_database_url
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")  # ✅ Load environment variables from your .env
 
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
@@ -15,6 +14,14 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
+
+DATABASES = {
+    "default": dj_database_url.config(
+        default=os.getenv("DATABASE_URL"),
+        conn_max_age=600,
+        ssl_require=True,
+    )
+}
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -57,15 +64,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "brightventurez.wsgi.application"
-
-# Use external Render database URL for local dev or fallback
-DATABASES = {
-    "default": dj_database_url.parse(
-        os.environ.get("DATABASE_URL"),
-        conn_max_age=600,
-        ssl_require=True,  # keeps your connection secure
-    )
-}
 
 
 AUTH_PASSWORD_VALIDATORS = []
