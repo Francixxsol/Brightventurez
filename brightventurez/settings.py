@@ -9,8 +9,9 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
-
+ALLOWED_HOSTS = [
+    "brightventurez-production.up.railway.app",
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
