@@ -27,7 +27,6 @@ reviews = [
     {"name": "Mercy", "text": "They deliver exactly what they promise. No suspense, just results.", "rating": 5},
 ]
 
-
     return {
         "wallet_balance": wallet_balance,
         "reviews": reviews,
