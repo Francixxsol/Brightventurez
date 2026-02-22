@@ -144,30 +144,31 @@ class PaystackService:
 
 class WalletService:
 
-    @staticmethod
-    @transaction.atomic
-    def credit_user(
-        user,
-        amount: Decimal,
-        reference: Optional[str] = None,
-        note: str = ""
-    ):
-        wallet, _ = Wallet.objects.get_or_create(user=user)
+@staticmethod
+@transaction.atomic
+def credit_user(
+    user,
+    amount: Decimal,
+    reference: Optional[str] = None,
+    note: str = "",
+    transaction_type: str = "CREDIT"  # <-- add this
+):
+    wallet, _ = Wallet.objects.get_or_create(user=user)
 
-        amount = Decimal(amount)
-        wallet.balance = (wallet.balance or Decimal("0.00")) + amount
-        wallet.save(update_fields=["balance"])
+    amount = Decimal(amount)
+    wallet.balance = (wallet.balance or Decimal("0.00")) + amount
+    wallet.save(update_fields=["balance"])
 
-        tx = WalletTransaction.objects.create(
-            user=user,
-            transaction_type="CREDIT",
-            amount=amount,
-            reference=reference or str(uuid.uuid4())[:12],
-            description=note,
-            status="SUCCESS"
-        )
+    tx = WalletTransaction.objects.create(
+        user=user,
+        transaction_type=transaction_type,  # <-- use the parameter
+        amount=amount,
+        reference=reference or str(uuid.uuid4())[:12],
+        description=note,
+        status="SUCCESS"
+    )
 
-        return tx
+    return tx
 
     @staticmethod
     @transaction.atomic
