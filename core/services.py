@@ -143,22 +143,26 @@ class PaystackService:
         return hmac.compare_digest(computed, signature)
 
 class WalletService:
-
-@staticmethod
-@transaction.atomic
-def credit_user(
+    @staticmethod
+    @transaction.atomic
+    def credit_user(
     user,
     amount: Decimal,
     reference: Optional[str] = None,
     note: str = "",
-    transaction_type: str = "CREDIT"  # <-- add this
+    transaction_type: str = "CREDIT"  # <-- added parameter
 ):
+    # Get or create wallet for the user
     wallet, _ = Wallet.objects.get_or_create(user=user)
 
+    # Ensure amount is a Decimal
     amount = Decimal(amount)
+
+    # Credit wallet balance
     wallet.balance = (wallet.balance or Decimal("0.00")) + amount
     wallet.save(update_fields=["balance"])
 
+    # Create transaction record
     tx = WalletTransaction.objects.create(
         user=user,
         transaction_type=transaction_type,  # <-- use the parameter
@@ -169,7 +173,8 @@ def credit_user(
     )
 
     return tx
-
+    
+    
     @staticmethod
     @transaction.atomic
     def debit_user(
