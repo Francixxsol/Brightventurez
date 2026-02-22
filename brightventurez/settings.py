@@ -11,7 +11,9 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ALLOWED_HOSTS = [
     "brightventurez-production.up.railway.app",
-]
+    "brightventurez.online",
+    "www.brightventurez.online",
+]]
 
 SECRET_KEY="upej7vb)dpt%_ky7axfbd*)le&fzp()k0k#!@p3($&ti9%hx%&"
 
