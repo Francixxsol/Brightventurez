@@ -19,33 +19,37 @@
   <form method="POST" action="{% url 'core:buy_data' %}">
     {% csrf_token %}
 
-    <label>Select Network</label>
-    <select name="network" id="network" required>
-      <option value="">-- Select Network --</option>
-      <option value="MTN">MTN</option>
-      <option value="AIRTEL">AIRTEL</option>
-      <option value="GLO">GLO</option>
-      <option value="9MOBILE">9mobile</option>
-    </select>
+<label>Select Network</label>
+<select name="network" id="network" required>
+    <option value="">-- Select Network --</option>
+    <option value="01">MTN</option>
+    <option value="02">AIRTEL</option>
+    <option value="03">GLO</option>
+    <option value="04">9MOBILE</option>
+</select>
 
-   <label>Select Data Type</label>
-    <select name="data_type" id="data_type" required>
-      <option value="">-- Select Data Type --</option>
-      <option value="SME">SME</option>
-      <option value="CG">Corporate</option>
-      <option value="GIFTING">Gifting</option>
-    <option value="CG_LITE">CGlite</option>
-    </select>
+<label>Select Data Type</label>
+<select name="data_type" id="data_type" required>
+    <option value="">-- Select Data Type --</option>
+    <option value="sme">SME</option>
+    <option value="cg">Corporate</option>
+    <option value="gifting">Gifting</option>
+    <option value="cglite">CGlite</option>
+</select>
 
-    <label>Select Plan</label>
-    <select name="plan_id" id="plan_id" required>
-      <option value="">-- Select Plan --</option>
-    </select>
+<label>Select Plan</label>
+<select name="plan_id" id="plan_id" required>
+    <option value="">-- Select Plan --</option>
+</select>
 
-    <label>Enter Phone</label>
-    <input type="text" name="phone" placeholder="080..." required>
+<div id="plan-info" style="margin-top:10px;">
+    <!-- Live plan info will appear here -->
+</div>
 
-    <button type="submit">Buy Data</button>
+<label>Enter Phone</label>
+<input type="text" name="phone" placeholder="080..." required>
+
+<button type="submit">Buy Data</button>
   </form>
 </section>
 
