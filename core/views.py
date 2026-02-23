@@ -55,14 +55,6 @@ def register_view(request):
             # ✅ Ensure wallet exists immediately (synchronous)
             Wallet.objects.get_or_create(user=user)
 
-            # 🔹 Optional: Only run async task if async_task is available
-            try:
-                from django_q.tasks import async_task
-                async_task("core.tasks.post_signup_tasks", user.id, hook=None)
-            except ImportError:
-                # Async task library not installed, skip for now
-                pass
-
             messages.success(request, "Account created successfully! You can now log in.")
             return redirect("core:login")
     else:
@@ -256,60 +248,83 @@ class BuyDataView(View):
     def get(self, request):
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
         plans = PriceTable.objects.all().order_by("network", "plan_name")
-        return render(request, "core/buy_data.html", {"wallet": wallet, "plans": plans})
+        return render(request, "core/buy_data.html", {
+            "wallet": wallet,
+            "plans": plans
+        })
 
+    @transaction.atomic
     def post(self, request):
         network = request.POST.get("network")
         plan_id = request.POST.get("plan_id")
         phone = request.POST.get("phone")
 
         if not all([network, plan_id, phone]):
-            return JsonResponse({"success": False, "message": "All fields are required."})
+            messages.error(request, "All fields are required.")
+            return redirect("core:buy_data")
 
-        plan = PriceTable.objects.filter(id=plan_id, network=network).first()
+        plan = PriceTable.objects.filter(
+            id=plan_id,
+            network=network
+        ).first()
+
         if not plan:
-            return JsonResponse({"success": False, "message": "Invalid plan selected."})
+            messages.error(request, "Invalid plan selected.")
+            return redirect("core:buy_data")
 
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        amount = plan.my_price
-
-        if wallet.balance < amount:
-            return JsonResponse({"success": False, "message": "Insufficient wallet balance."})
+        amount = Decimal(plan.my_price)
 
         reference = generate_reference()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        description = f"[{timestamp}] Data Purchase: {plan.network} {plan.plan_name} to {phone}"
-
-        # 1️⃣ Create PENDING transaction
-        tx = WalletTransaction.objects.create(
-            user=request.user,
-            reference=reference,
-            transaction_type="data",
-            amount=amount,
-            status="pending",
-            description=description
+        description = (
+            f"[{timestamp}] Data Purchase: "
+            f"{plan.network} {plan.plan_name} to {phone}"
         )
 
-        # 2️⃣ Call VTUService
-        response = VTUService.buy_data_plan(plan.id, phone, request.user)
+        # 🔥 Use WalletService
+        success, result = WalletService.debit_user(
+            user=request.user,
+            amount=amount,
+            reference=reference,
+            note=description,
+            transaction_type="DATA"
+        )
+
+        if not success:
+            return redirect("core:fund_wallet")
+
+        tx = result
+
+        response = VTUService.buy_data_plan(
+            plan.id,
+            phone,
+            request.user
+        )
 
         if not response.get("status"):
-            tx.status = "failed"
-            tx.save()
-            return JsonResponse({
-                "success": False,
-                "message": f"VTU Error: {response.get('description')}"
-            })
+            WalletService.credit_user(
+                user=request.user,
+                amount=amount,
+                reference=reference,
+                note="Refund for failed data purchase",
+                transaction_type="REFUND"
+            )
 
-        # 3️⃣ Mark transaction as successful
-        tx.status = "success"
-        tx.save()
+            tx.status = "FAILED"
+            tx.save(update_fields=["status"])
 
-        return JsonResponse({
-            "success": True,
-            "message": f"{plan.plan_name} successfully sent to {phone}",
-            "reference": reference
-        })
+            messages.error(request, response.get("description"))
+            return redirect("core:buy_data")
+
+        tx.status = "SUCCESS"
+        tx.save(update_fields=["status"])
+
+        messages.success(
+            request,
+            f"{plan.plan_name} successfully sent to {phone}"
+        )
+
+        return redirect("core:buy_data")
 
 # -----------------------------
 # Buy airtime view (class)
@@ -319,59 +334,96 @@ class BuyAirtimeView(View):
 
     def get(self, request):
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        return render(request, "core/buy_airtime.html", {"wallet": wallet})
+        return render(request, "core/buy_airtime.html", {
+            "wallet": wallet
+        })
 
+    @transaction.atomic
     def post(self, request):
         network = request.POST.get("network")
         phone = request.POST.get("phone")
         amount = request.POST.get("amount")
 
+        # 🔎 Validate inputs
         if not all([network, phone, amount]):
-            return JsonResponse({"success": False, "message": "All fields are required."})
+            messages.error(request, "All fields are required.")
+            return redirect("core:buy_airtime")
 
         try:
             amount = Decimal(amount)
+            if amount <= 0:
+                raise ValueError
         except:
-            return JsonResponse({"success": False, "message": "Invalid amount."})
+            messages.error(request, "Invalid airtime amount.")
+            return redirect("core:buy_airtime")
 
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        if wallet.balance < amount:
-            return JsonResponse({"success": False, "message": "Insufficient wallet balance."})
-
+        # 🔐 Generate reference
         reference = generate_reference()
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        description = f"[{timestamp}] Airtime Purchase: {network} ₦{amount} to {phone}"
 
-        # 1️⃣ Create PENDING transaction
-        tx = WalletTransaction.objects.create(
-            user=request.user,
-            reference=reference,
-            transaction_type="airtime",
-            amount=amount,
-            status="pending",
-            description=description
+        description = (
+            f"[{timestamp}] Airtime Purchase: "
+            f"{network} ₦{amount} to {phone}"
         )
 
-        # 2️⃣ Call VTUService
-        response = VTUService.buy_airtime(network, phone, amount, request.user)
+        # 💰 Debit using WalletService
+        success, result = WalletService.debit_user(
+            user=request.user,
+            amount=amount,
+            reference=reference,
+            note=description,
+            transaction_type="AIRTIME"
+        )
 
+        # ❌ Insufficient balance
+        if not success:
+            messages.warning(
+                request,
+                "Insufficient wallet balance. Please fund your wallet."
+            )
+            return redirect("core:fund_wallet")
+
+        tx = result  # transaction object created inside WalletService
+
+        # 🚀 Call VTU Service
+        response = VTUService.buy_airtime(
+            network=network,
+            phone=phone,
+            amount=amount,
+            user=request.user
+        )
+
+        # ❌ If VTU fails → refund
         if not response.get("status"):
-            tx.status = "failed"
-            tx.save()
-            return JsonResponse({
-                "success": False,
-                "message": f"VTU Error: {response.get('description')}"
-            })
 
-        # 3️⃣ Mark transaction as successful
-        tx.status = "success"
-        tx.save()
+            WalletService.credit_user(
+                user=request.user,
+                amount=amount,
+                reference=reference,
+                note="Refund for failed airtime purchase",
+                transaction_type="REFUND"
+            )
 
-        return JsonResponse({
-            "success": True,
-            "message": f"Airtime ₦{amount} successfully sent to {phone}",
-            "reference": reference
-        })
+            tx.status = "FAILED"
+            tx.save(update_fields=["status"])
+
+            messages.error(
+                request,
+                response.get("description", "Airtime purchase failed.")
+            )
+
+            return redirect("core:buy_airtime")
+
+        # ✅ If success
+        tx.status = "SUCCESS"
+        tx.save(update_fields=["status"])
+
+        messages.success(
+            request,
+            f"Airtime ₦{amount} successfully sent to {phone}"
+        )
+
+        return redirect("core:buy_airtime")
 
 # -----------------------------
 # Paystack webhook (robust)

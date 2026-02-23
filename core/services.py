@@ -144,6 +144,7 @@ class PaystackService:
         return hmac.compare_digest(computed, signature)
 
 
+#wallet servuces
 class WalletService:
 
     @staticmethod
@@ -155,17 +156,13 @@ class WalletService:
         note: str = "",
         transaction_type: str = "CREDIT"
     ):
-        # Get or create wallet
-        wallet, _ = Wallet.objects.get_or_create(user=user)
+        wallet = Wallet.objects.select_for_update().get_or_create(user=user)[0]
 
-        # Ensure Decimal
         amount = Decimal(amount)
 
-        # Credit balance
         wallet.balance = (wallet.balance or Decimal("0.00")) + amount
         wallet.save(update_fields=["balance"])
 
-        # Create transaction
         tx = WalletTransaction.objects.create(
             user=user,
             transaction_type=transaction_type,
@@ -177,15 +174,17 @@ class WalletService:
 
         return tx
 
+
     @staticmethod
     @transaction.atomic
     def debit_user(
         user,
         amount: Decimal,
         reference: Optional[str] = None,
-        note: str = ""
+        note: str = "",
+        transaction_type: str = "DEBIT"
     ):
-        wallet, _ = Wallet.objects.get_or_create(user=user)
+        wallet = Wallet.objects.select_for_update().get_or_create(user=user)[0]
 
         amount = Decimal(amount)
 
@@ -197,15 +196,16 @@ class WalletService:
 
         tx = WalletTransaction.objects.create(
             user=user,
-            transaction_type="DEBIT",
+            transaction_type=transaction_type,
             amount=amount,
             reference=reference or str(uuid.uuid4())[:12],
             description=note,
-            status="SUCCESS"
+            status="PENDING"   # 🔥 important
         )
 
         return True, tx
 
+#Vtu services
 class VTUService:
 
     @staticmethod
