@@ -12,6 +12,7 @@ from django.utils.encoding import force_bytes
 from django.db import transaction
 from .models import Wallet, WalletTransaction, PriceTable
 from django.contrib.auth import get_user_model
+from .utils import generate_reference
 
 User = get_user_model()
 
