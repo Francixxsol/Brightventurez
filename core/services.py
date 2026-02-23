@@ -278,15 +278,18 @@ class VTUService:
     @staticmethod
     @transaction.atomic
     def buy_airtime(user, network, phone, amount):
-        """Buy airtime via VTU"""
-        reference = generate_reference()
+        """Buy airtime safely via VTU, debit wallet, and handle refunds on failure"""
+        wallet_service = WalletService()  # Create instance
+        reference = generate_reference()  # Unique transaction reference
 
-        ok, err = WalletService.debit(
-            user, amount, reference, f"Airtime {network} → {phone}"
+        # Step 1: Debit user's wallet
+        ok, err = wallet_service.debit(
+            user, amount, reference, f"Airtime {network}  ^f^r {phone}"
         )
         if not ok:
-            return {"success": False, "message": err}
+            return {"success": False, "message": f"Wallet debit failed: {err}"}
 
+        # Step 2: Create a local transaction record
         tx = VTUTransaction.objects.create(
             user=user,
             reference=reference,
@@ -304,28 +307,32 @@ class VTUService:
         }
 
         try:
+            # Step 3: Call VTU API
             r = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
             r.raise_for_status()
             data = r.json()
             tx.response = data
 
+            # Step 4: Check API response
             if data.get("code") == 101:
                 tx.status = "SUCCESS"
                 tx.save()
-                return {"success": True, "message": "Airtime sent"}
+                return {"success": True, "message": "Airtime sent successfully!"}
 
-            # Refund on failure
-            WalletService.refund(user, amount, reference)
+            # If API fails, refund user
+            wallet_service.refund(user, amount, reference)
             tx.status = "FAILED"
             tx.save()
-            return {"success": False, "message": "Airtime failed"}
+            return {"success": False, "message": "Airtime purchase failed, wallet refunded."}
 
         except Exception as e:
-            WalletService.refund(user, amount, reference)
+            # Catch network/API errors and refund
+            wallet_service.refund(user, amount, reference)
             tx.status = "FAILED"
             tx.response = {"error": str(e)}
             tx.save()
-            return {"success": False, "message": str(e)}
+            return {"success": False, "message": f"Airtime error: {str(e)}"}
+
 
     def get_plan_object(plan_id: int) -> Optional[PriceTable]:
         """

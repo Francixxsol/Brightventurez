@@ -596,20 +596,27 @@ def sell_data_view(request):
 @login_required
 def get_plans(request):
     network = request.GET.get("network")
-    data_type = request.GET.get("data_type")  # your plan_type
+    data_type = request.GET.get("data_type")  # plan_type from frontend
     plans = []
 
     if network and data_type:
-        qs = PriceTable.objects.filter(network=network, plan_type=data_type)
+        # ✅ Use __iexact to ignore case mismatches
+        qs = PriceTable.objects.filter(
+            network=network,
+            plan_type__iexact=data_type
+        ).order_by('my_price')  # optional: sort by cost
+
         for plan in qs:
             plans.append({
                 "id": plan.id,
                 "plan_name": plan.plan_name,
-                "duration": plan.duration,
-                "my_price": float(plan.my_price),  # safe for JSON
-                "api_code": plan.api_code or plan.plan_name
+                "duration": getattr(plan, "duration", ""),  # safe if not set
+                "my_price": float(plan.my_price),  # JSON-safe
+                "api_code": getattr(plan, "plan_code", plan.plan_name)  # fallback
             })
+
     return JsonResponse({"plans": plans})
+
 
 def generate_reference(length=12):
     """
