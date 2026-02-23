@@ -142,39 +142,40 @@ class PaystackService:
         computed = hmac.new(force_bytes(PAYSTACK_SECRET), msg=raw_body, digestmod=hashlib.sha512).hexdigest()
         return hmac.compare_digest(computed, signature)
 
+
 class WalletService:
+
     @staticmethod
     @transaction.atomic
     def credit_user(
-    user,
-    amount: Decimal,
-    reference: Optional[str] = None,
-    note: str = "",
-    transaction_type: str = "CREDIT"  # <-- added parameter
-):
-    # Get or create wallet for the user
-    wallet, _ = Wallet.objects.get_or_create(user=user)
+        user,
+        amount: Decimal,
+        reference: Optional[str] = None,
+        note: str = "",
+        transaction_type: str = "CREDIT"
+    ):
+        # Get or create wallet
+        wallet, _ = Wallet.objects.get_or_create(user=user)
 
-    # Ensure amount is a Decimal
-    amount = Decimal(amount)
+        # Ensure Decimal
+        amount = Decimal(amount)
 
-    # Credit wallet balance
-    wallet.balance = (wallet.balance or Decimal("0.00")) + amount
-    wallet.save(update_fields=["balance"])
+        # Credit balance
+        wallet.balance = (wallet.balance or Decimal("0.00")) + amount
+        wallet.save(update_fields=["balance"])
 
-    # Create transaction record
-    tx = WalletTransaction.objects.create(
-        user=user,
-        transaction_type=transaction_type,  # <-- use the parameter
-        amount=amount,
-        reference=reference or str(uuid.uuid4())[:12],
-        description=note,
-        status="SUCCESS"
-    )
+        # Create transaction
+        tx = WalletTransaction.objects.create(
+            user=user,
+            transaction_type=transaction_type,
+            amount=amount,
+            reference=reference or str(uuid.uuid4())[:12],
+            description=note,
+            status="SUCCESS"
+        )
 
-    return tx
-    
-    
+        return tx
+
     @staticmethod
     @transaction.atomic
     def debit_user(
@@ -186,6 +187,7 @@ class WalletService:
         wallet, _ = Wallet.objects.get_or_create(user=user)
 
         amount = Decimal(amount)
+
         if wallet.balance < amount:
             return False, "Insufficient balance"
 
