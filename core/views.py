@@ -27,6 +27,7 @@ from django.db.models import Q
 from .models import Wallet, WalletTransaction, PriceTable, SellRequest
 from .models import WalletTransaction as Transaction
 from .services import PaystackService, WalletService, VTUService, PROCESSING_FEE
+from django.db import transaction
 from .utils.helpers import parse_decimal
 User = get_user_model()
 
