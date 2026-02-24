@@ -33,15 +33,6 @@ def json_or_text(resp):
 
 
 # ======================================================
-# TIMESTAMPED REFERENCE GENERATOR
-# ALWAYS UNIQUE
-# Example: 7f23ab3c-91f2-4d39-aa33-2b8a08e93712-1733800201
-# ======================================================
-def generate_reference():
-    return f"{uuid.uuid4()}-{int(time.time())}"
-
-
-# ======================================================
 # FETCH PROVIDER PLANS
 # Sync provider → ProviderPlan
 # ======================================================
@@ -161,16 +152,6 @@ def buy_data(user, network, plan_id, phone_number, plan_type="VIRTUAL"):
         txn.save()
         return txn
 
-def generate_reference(prefix="TXN"):
-    """
-    Generate a unique transaction reference.
-    Example: TXN-1702308392-9f1b2c
-    """
-    ts = int(time.time())
-    unique_id = uuid.uuid4().hex[:6].upper()
-    return f"{prefix}-{ts}-{unique_id}"
-
-
 # ======================================================
 # GET OR CREATE USER WALLET
 # ======================================================
@@ -180,3 +161,10 @@ def get_or_create_wallet(user):
         defaults={"balance": Decimal("0.00")}
     )
     return wallet
+
+def generate_reference(prefix="TXN"):
+    """
+    Generate a cryptographically safe unique transaction reference.
+    Example: TXN-9F2A6C81B3D4E
+    """
+    return f"{prefix}-{uuid.uuid4().hex[:12].upper()}"

@@ -149,53 +149,76 @@ class PaystackService:
 class WalletService:
 
     @staticmethod
+    def _generate_wallet_reference(prefix="WAL"):
+        return f"{prefix}-{uuid.uuid4().hex[:12].upper()}"
+
+    @staticmethod
     @transaction.atomic
-    def debit_user(user, amount, reference=None, note="", transaction_type="DEBIT"):
-        wallet = Wallet.objects.select_for_update().get_or_create(user=user)[0]
+    def debit_user(user, amount, reference=None, note="", transaction_type="debit"):
+        wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
+
         amount = Decimal(amount)
+
         if wallet.balance < amount:
             return False, "Insufficient balance"
 
         wallet.balance -= amount
         wallet.save(update_fields=["balance"])
 
-        tx = WalletTransaction.objects.create(
+        WalletTransaction.objects.create(
             user=user,
-            transaction_type=transaction_type,
+            transaction_type=transaction_type.lower(),
             amount=amount,
-            reference=reference or str(uuid.uuid4())[:12],
+            reference=reference or WalletService._generate_wallet_reference("DEB"),
             description=note,
-            status="PENDING"
+            status="pending"  # must match model choice
         )
+
         return True, None
 
     @staticmethod
     @transaction.atomic
-    def credit_user(user, amount, reference=None, note="", transaction_type="CREDIT"):
-        wallet = Wallet.objects.select_for_update().get_or_create(user=user)[0]
+    def credit_user(user, amount, reference=None, note="", transaction_type="credit"):
+        wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
+
         amount = Decimal(amount)
+
         wallet.balance += amount
         wallet.save(update_fields=["balance"])
 
         tx = WalletTransaction.objects.create(
             user=user,
-            transaction_type=transaction_type,
+            transaction_type=transaction_type.lower(),
             amount=amount,
-            reference=reference or str(uuid.uuid4())[:12],
+            reference=reference or WalletService._generate_wallet_reference("CRD"),
             description=note,
-            status="SUCCESS"
+            status="success"  # must match model choice
         )
+
         return tx
 
-    # ✅ Aliases for your buy_airtime code
+    # Aliases for existing buy_airtime/buy_data logic
     @staticmethod
     def debit(user, amount, reference=None, note=""):
-        return WalletService.debit_user(user, amount, reference, note)
+        # DO NOT reuse VTU reference here
+        return WalletService.debit_user(
+            user,
+            amount,
+            reference=None,  # force unique wallet reference
+            note=note,
+            transaction_type="debit"
+        )
 
     @staticmethod
     def refund(user, amount, reference=None, note="Refund"):
-        return WalletService.credit_user(user, amount, reference, note)
-
+        # Always generate new reference for refund
+        return WalletService.credit_user(
+            user,
+            amount,
+            reference=None,  # force new reference
+            note=note,
+            transaction_type="credit"
+        )
 
 #Vtu services
 class VTUService:
