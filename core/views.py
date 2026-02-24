@@ -84,9 +84,6 @@ def register_view(request):
             # Ensure wallet exists immediately
             Wallet.objects.get_or_create(user=user)
 
-            # Enqueue any heavy post-signup tasks
-            async_task("core.tasks.post_signup_tasks", user.id, hook=None)
-
             # Authenticate and log the user in immediately
             user = authenticate(
                 request,
@@ -296,7 +293,7 @@ class BuyDataView(View):
 
         tx = result
 
-        response = VTUService.buy_data_plan(
+        response = VTUService.buy_data(
             plan.id,
             phone,
             request.user
