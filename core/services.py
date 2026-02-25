@@ -169,9 +169,14 @@ class WalletService:
                     raise
         raise Exception("Could not generate unique reference")
 
+
     @staticmethod
     @transaction.atomic
-    def debit_user(user, amount, note="", reference=None):
+    def debit_user(user, amount, note="", reference=None, **kwargs):
+        """
+        kwargs absorbs old parameters like transaction_type
+        so old code won't crash.
+        """
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
 
@@ -192,9 +197,13 @@ class WalletService:
 
         return True, None, tx
 
+
     @staticmethod
     @transaction.atomic
-    def credit_user(user, amount, note="", reference=None):
+    def credit_user(user, amount, note="", reference=None, **kwargs):
+        """
+        kwargs absorbs old parameters like transaction_type
+        """
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
 
