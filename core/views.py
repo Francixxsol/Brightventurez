@@ -239,7 +239,8 @@ def verify_payment(request):
     return redirect("core:dashboard")
 
 # -----------------------------
-# Buy data view (class)
+#Buy data view (class)
+#------------------------------
 @method_decorator(login_required, name="dispatch")
 class BuyDataView(View):
 
@@ -251,70 +252,72 @@ class BuyDataView(View):
             "plans": plans
         })
 
-   @transaction.atomic
-   def post(self, request):
-    network = request.POST.get("network")
-    plan_id = request.POST.get("plan_id")
-    phone = request.POST.get("phone")
+    @transaction.atomic
+    def post(self, request):
+        network = request.POST.get("network")
+        plan_id = request.POST.get("plan_id")
+        phone = request.POST.get("phone")
 
-    if not all([network, plan_id, phone]):
-        messages.error(request, "All fields are required.")
-        return redirect("core:buy_data")
+        if not all([network, plan_id, phone]):
+            messages.error(request, "All fields are required.")
+            return redirect("core:buy_data")
 
-    plan = PriceTable.objects.filter(
-        id=plan_id,
-        network=network
-    ).first()
+        plan = PriceTable.objects.filter(
+            id=plan_id,
+            network=network
+        ).first()
 
-    if not plan:
-        messages.error(request, "Invalid plan selected.")
-        return redirect("core:buy_data")
+        if not plan:
+            messages.error(request, "Invalid plan selected.")
+            return redirect("core:buy_data")
 
-    amount = Decimal(plan.my_price)
-    reference = generate_reference()
+        amount = Decimal(plan.my_price)
+        reference = generate_reference()
 
-    description = f"Data Purchase: {plan.network} {plan.plan_name} to {phone}"
+        description = f"Data Purchase: {plan.network} {plan.plan_name} to {phone}"
 
-    # ✅ FIXED UNPACKING (3 values)
-    success, error, wallet_tx = WalletService.debit_user(
-        user=request.user,
-        amount=amount,
-        reference=reference,
-        note=description
-    )
-
-    if not success:
-        messages.error(request, error)
-        return redirect("core:fund_wallet")
-
-    response = VTUService.buy_data(
-        user=request.user,
-        plan_id=plan.id,
-        phone=phone
-    )
-
-    if not response.get("success"):
-        WalletService.credit_user(
+        # ✅ Correct unpacking
+        success, error, wallet_tx = WalletService.debit_user(
             user=request.user,
             amount=amount,
             reference=reference,
-            note="Refund for failed data purchase"
+            note=description
         )
 
-        wallet_tx.status = "failed"
+        if not success:
+            messages.error(request, error)
+            return redirect("core:fund_wallet")
+
+        response = VTUService.buy_data(
+            user=request.user,
+            plan_id=plan.id,
+            phone=phone
+        )
+
+        if not response.get("success"):
+            WalletService.credit_user(
+                user=request.user,
+                amount=amount,
+                reference=reference,
+                note="Refund for failed data purchase"
+            )
+
+            wallet_tx.status = "failed"
+            wallet_tx.save(update_fields=["status"])
+
+            messages.error(request, response.get("message"))
+            return redirect("core:buy_data")
+
+        wallet_tx.status = "success"
         wallet_tx.save(update_fields=["status"])
 
-        messages.error(request, response.get("message"))
+        messages.success(
+            request,
+            f"{plan.plan_name} successfully sent to {phone}"
+        )
+
         return redirect("core:buy_data")
 
-    wallet_tx.status = "success"
-    wallet_tx.save(update_fields=["status"])
-
-    messages.success(request,
-        f"{plan.plan_name} successfully sent to {phone}"
-    )
-
-    return redirect("core:buy_data")
 
 # -----------------------------
 # Buy airtime view (class)
