@@ -251,78 +251,70 @@ class BuyDataView(View):
             "plans": plans
         })
 
-    @transaction.atomic
-    def post(self, request):
-        network = request.POST.get("network")
-        plan_id = request.POST.get("plan_id")
-        phone = request.POST.get("phone")
+   @transaction.atomic
+   def post(self, request):
+    network = request.POST.get("network")
+    plan_id = request.POST.get("plan_id")
+    phone = request.POST.get("phone")
 
-        if not all([network, plan_id, phone]):
-            messages.error(request, "All fields are required.")
-            return redirect("core:buy_data")
+    if not all([network, plan_id, phone]):
+        messages.error(request, "All fields are required.")
+        return redirect("core:buy_data")
 
-        plan = PriceTable.objects.filter(
-            id=plan_id,
-            network=network
-        ).first()
+    plan = PriceTable.objects.filter(
+        id=plan_id,
+        network=network
+    ).first()
 
-        if not plan:
-            messages.error(request, "Invalid plan selected.")
-            return redirect("core:buy_data")
+    if not plan:
+        messages.error(request, "Invalid plan selected.")
+        return redirect("core:buy_data")
 
-        amount = Decimal(plan.my_price)
+    amount = Decimal(plan.my_price)
+    reference = generate_reference()
 
-        reference = generate_reference()
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        description = (
-            f"[{timestamp}] Data Purchase: "
-            f"{plan.network} {plan.plan_name} to {phone}"
-        )
+    description = f"Data Purchase: {plan.network} {plan.plan_name} to {phone}"
 
-        # 🔥 Use WalletService
-        success, result = WalletService.debit_user(
+    # ✅ FIXED UNPACKING (3 values)
+    success, error, wallet_tx = WalletService.debit_user(
+        user=request.user,
+        amount=amount,
+        reference=reference,
+        note=description
+    )
+
+    if not success:
+        messages.error(request, error)
+        return redirect("core:fund_wallet")
+
+    response = VTUService.buy_data(
+        user=request.user,
+        plan_id=plan.id,
+        phone=phone
+    )
+
+    if not response.get("success"):
+        WalletService.credit_user(
             user=request.user,
             amount=amount,
             reference=reference,
-            note=description,
-            transaction_type="DATA"
+            note="Refund for failed data purchase"
         )
 
-        if not success:
-            return redirect("core:fund_wallet")
+        wallet_tx.status = "failed"
+        wallet_tx.save(update_fields=["status"])
 
-        tx = result
-
-        response = VTUService.buy_data(
-            plan.id,
-            phone,
-            request.user
-        )
-
-        if not response.get("status"):
-            WalletService.credit_user(
-                user=request.user,
-                amount=amount,
-                reference=reference,
-                note="Refund for failed data purchase",
-                transaction_type="REFUND"
-            )
-
-            tx.status = "FAILED"
-            tx.save(update_fields=["status"])
-
-            messages.error(request, response.get("description"))
-            return redirect("core:buy_data")
-
-        tx.status = "SUCCESS"
-        tx.save(update_fields=["status"])
-
-        messages.success(
-            request,
-            f"{plan.plan_name} successfully sent to {phone}"
-        )
-
+        messages.error(request, response.get("message"))
         return redirect("core:buy_data")
+
+    wallet_tx.status = "success"
+    wallet_tx.save(update_fields=["status"])
+
+    messages.success(request,
+        f"{plan.plan_name} successfully sent to {phone}"
+    )
+
+    return redirect("core:buy_data")
 
 # -----------------------------
 # Buy airtime view (class)
@@ -336,92 +328,76 @@ class BuyAirtimeView(View):
             "wallet": wallet
         })
 
-    @transaction.atomic
-    def post(self, request):
-        network = request.POST.get("network")
-        phone = request.POST.get("phone")
-        amount = request.POST.get("amount")
+   @transaction.atomic
+   def post(self, request):
+    network = request.POST.get("network")
+    phone = request.POST.get("phone")
+    amount = request.POST.get("amount")
 
-        # 🔎 Validate inputs
-        if not all([network, phone, amount]):
-            messages.error(request, "All fields are required.")
-            return redirect("core:buy_airtime")
+    if not all([network, phone, amount]):
+        messages.error(request, "All fields are required.")
+        return redirect("core:buy_airtime")
 
-        try:
-            amount = Decimal(amount)
-            if amount <= 0:
-                raise ValueError
-        except:
-            messages.error(request, "Invalid airtime amount.")
-            return redirect("core:buy_airtime")
+    try:
+        amount = Decimal(amount)
+        if amount <= 0:
+            raise ValueError
+    except:
+        messages.error(request, "Invalid airtime amount.")
+        return redirect("core:buy_airtime")
 
-        # 🔐 Generate reference
-        reference = generate_reference()
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    reference = generate_reference()
+    description = f"Airtime Purchase: {network} ₦{amount} to {phone}"
 
-        description = (
-            f"[{timestamp}] Airtime Purchase: "
-            f"{network} ₦{amount} to {phone}"
+    # ✅ FIXED UNPACKING (3 values)
+    success, error, wallet_tx = WalletService.debit_user(
+        user=request.user,
+        amount=amount,
+        reference=reference,
+        note=description
+    )
+
+    if not success:
+        messages.warning(
+            request,
+            "Insufficient wallet balance. Please fund your wallet."
         )
+        return redirect("core:fund_wallet")
 
-        # 💰 Debit using WalletService
-        success, result = WalletService.debit_user(
+    response = VTUService.buy_airtime(
+        user=request.user,
+        network=network,
+        phone=phone,
+        amount=amount
+    )
+
+    if not response.get("success"):
+        WalletService.credit_user(
             user=request.user,
             amount=amount,
             reference=reference,
-            note=description,
-            transaction_type="AIRTIME"
+            note="Refund for failed airtime purchase"
         )
 
-        # ❌ Insufficient balance
-        if not success:
-            messages.warning(
-                request,
-                "Insufficient wallet balance. Please fund your wallet."
-            )
-            return redirect("core:fund_wallet")
+        wallet_tx.status = "failed"
+        wallet_tx.save(update_fields=["status"])
 
-        tx = result  # transaction object created inside WalletService
-
-        # 🚀 Call VTU Service
-        response = VTUService.buy_airtime(
-            network=network,
-            phone=phone,
-            amount=amount,
-            user=request.user
-        )
-
-        # ❌ If VTU fails → refund
-        if not response.get("status"):
-
-            WalletService.credit_user(
-                user=request.user,
-                amount=amount,
-                reference=reference,
-                note="Refund for failed airtime purchase",
-                transaction_type="REFUND"
-            )
-
-            tx.status = "FAILED"
-            tx.save(update_fields=["status"])
-
-            messages.error(
-                request,
-                response.get("description", "Airtime purchase failed.")
-            )
-
-            return redirect("core:buy_airtime")
-
-        # ✅ If success
-        tx.status = "SUCCESS"
-        tx.save(update_fields=["status"])
-
-        messages.success(
+        messages.error(
             request,
-            f"Airtime ₦{amount} successfully sent to {phone}"
+            response.get("message", "Airtime purchase failed.")
         )
 
         return redirect("core:buy_airtime")
+
+    wallet_tx.status = "success"
+    wallet_tx.save(update_fields=["status"])
+
+    messages.success(
+        request,
+        f"Airtime ₦{amount} successfully sent to {phone}"
+    )
+
+    return redirect("core:buy_airtime")
 
 # -----------------------------
 # Paystack webhook (robust)
