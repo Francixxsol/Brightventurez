@@ -10,6 +10,8 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
     "brightventurez-production.up.railway.app",
     "brightventurez.online",
     "www.brightventurez.online",
