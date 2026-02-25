@@ -153,55 +153,80 @@ class WalletService:
         return uuid.uuid4().hex.upper()
 
     @staticmethod
+    def _create_transaction(user, transaction_type, amount, note, status, reference=None):
+        """
+        Create wallet transaction safely.
+        Allows external reference (for linking with VTU).
+        """
+        for _ in range(3):
+            try:
+                return WalletTransaction.objects.create(
+                    user=user,
+                    transaction_type=transaction_type,
+                    amount=amount,
+                    reference=reference or WalletService._generate_wallet_reference(),
+                    description=note,
+                    status=status
+                )
+            except IntegrityError:
+                if reference:
+                    raise
+                continue
+        raise Exception("Unable to generate unique wallet reference")
+
+    @staticmethod
     @transaction.atomic
-    def debit_user(user, amount, note="", transaction_type="debit"):
+    def debit_user(user, amount, note="", reference=None):
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
 
         if wallet.balance < amount:
-            return False, "Insufficient balance"
+            return False, "Insufficient balance", None
 
         wallet.balance -= amount
         wallet.save(update_fields=["balance"])
 
-        WalletTransaction.objects.create(
+        tx = WalletService._create_transaction(
             user=user,
-            transaction_type=transaction_type.lower(),
+            transaction_type="debit",
             amount=amount,
-            reference=WalletService._generate_wallet_reference(),
-            description=note,
-            status="pending"
+            note=note,
+            status="pending",
+            reference=reference
         )
 
-        return True, None
+        return True, None, tx
 
     @staticmethod
     @transaction.atomic
-    def credit_user(user, amount, note="", transaction_type="credit"):
+    def credit_user(user, amount, note="", reference=None):
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
 
         wallet.balance += amount
         wallet.save(update_fields=["balance"])
 
-        WalletTransaction.objects.create(
+        tx = WalletService._create_transaction(
             user=user,
-            transaction_type=transaction_type.lower(),
+            transaction_type="credit",
             amount=amount,
-            reference=WalletService._generate_wallet_reference(),
-            description=note,
-            status="success"
+            note=note,
+            status="success",
+            reference=reference
         )
 
-        return True, None
+        return True, None, tx
 
     @staticmethod
-    def debit(user, amount, note=""):
-        return WalletService.debit_user(user, amount, note, "debit")
+    def mark_success(wallet_tx):
+        wallet_tx.status = "success"
+        wallet_tx.save(update_fields=["status"])
 
     @staticmethod
-    def refund(user, amount, note="Refund"):
-        return WalletService.credit_user(user, amount, note, "credit")
+    def mark_failed(wallet_tx):
+        wallet_tx.status = "failed"
+        wallet_tx.save(update_fields=["status"])
+
 
 #Vtu services
 class VTUService:
@@ -209,7 +234,7 @@ class VTUService:
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_id, phone):
-        """Buy a data plan via VTU"""
+        """Buy a data plan via VTU safely"""
 
         # 1️⃣ Get plan
         try:
@@ -220,13 +245,19 @@ class VTUService:
         if not plan.network_id or not plan.plan_code:
             return {"success": False, "message": "Invalid VTU configuration"}
 
-        # 2️⃣ Generate truly unique VTU reference
+        # 2️⃣ Generate unique VTU reference
         vtu_reference = generate_reference()
         while VTUTransaction.objects.filter(reference=vtu_reference).exists():
             vtu_reference = generate_reference()
 
-        # 3️⃣ Debit wallet (wallet generates its own reference internally!)
-        ok, err = WalletService.debit(user, plan.my_price, note=f"{plan.network} {plan.plan_name} ^f^r {phone}")
+        # 3️⃣ Debit wallet using SAME reference (important!)
+        ok, err, wallet_tx = WalletService.debit_user(
+            user=user,
+            amount=plan.my_price,
+            note=f"{plan.network} {plan.plan_name} {phone}",
+            reference=vtu_reference
+        )
+
         if not ok:
             return {"success": False, "message": err}
 
@@ -241,7 +272,6 @@ class VTUService:
             status="pending"
         )
 
-        # 5️⃣ Payload (epins strict, DO NOT TOUCH)
         payload = {
             "networkId": int(plan.network_id),
             "MobileNumber": phone,
@@ -253,38 +283,58 @@ class VTUService:
             r = requests.post(VTU_DATA_URL, json=payload, headers=HEADERS, timeout=30)
             r.raise_for_status()
             data = r.json()
+
             tx.response = data
 
-            # Success
+            # ✅ SUCCESS
             if data.get("code") == 101:
                 tx.status = "success"
-                tx.save()
+                tx.save(update_fields=["status", "response"])
+
+                WalletService.mark_success(wallet_tx)
+
                 return {"success": True, "message": "Data sent successfully"}
 
-            # API failure → refund wallet
-            WalletService.refund(user, plan.my_price, note=f"Refund: Data {plan.plan_name}")
+            # ❌ API FAILURE
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, plan.my_price, note="Refund - Data Failed")
+
             tx.status = "failed"
-            tx.save()
+            tx.save(update_fields=["status", "response"])
+
             return {"success": False, "message": "VTU Failed, wallet refunded"}
 
         except Exception as e:
-            # Network error → refund wallet
-            WalletService.refund(user, plan.my_price, note=f"Refund: Data {plan.plan_name}")
+            # ❌ NETWORK ERROR
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, plan.my_price, note="Refund - Data Error")
+
             tx.status = "failed"
             tx.response = {"error": str(e)}
-            tx.save()
+            tx.save(update_fields=["status", "response"])
+
             return {"success": False, "message": "Transaction error, wallet refunded"}
 
     @staticmethod
     @transaction.atomic
     def buy_airtime(user, network, phone, amount):
-        """Buy airtime safely via VTU, debit wallet, and handle refunds on failure"""
+        """Buy airtime safely via VTU"""
 
-        # 1️⃣ Generate VTU reference
+        amount = Decimal(amount)
+
+        # 1️⃣ Generate unique VTU reference
         vtu_reference = generate_reference()
+        while VTUTransaction.objects.filter(reference=vtu_reference).exists():
+            vtu_reference = generate_reference()
 
-        # 2️⃣ Debit wallet (wallet generates its own reference internally!)
-        ok, err = WalletService.debit(user, amount, note=f"Airtime {network} ^f^r {phone}")
+        # 2️⃣ Debit wallet using same reference
+        ok, err, wallet_tx = WalletService.debit_user(
+            user=user,
+            amount=amount,
+            note=f"Airtime {network} {phone}",
+            reference=vtu_reference
+        )
+
         if not ok:
             return {"success": False, "message": f"Wallet debit failed: {err}"}
 
@@ -310,26 +360,37 @@ class VTUService:
             r = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
             r.raise_for_status()
             data = r.json()
+
             tx.response = data
 
-            # Success
+            # ✅ SUCCESS
             if data.get("code") == 101:
                 tx.status = "success"
-                tx.save()
+                tx.save(update_fields=["status", "response"])
+
+                WalletService.mark_success(wallet_tx)
+
                 return {"success": True, "message": "Airtime sent successfully!"}
 
-            # API failure → refund wallet
-            WalletService.refund(user, amount, note=f"Airtime {network} failed")
+            # ❌ API FAILURE
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, amount, note="Refund - Airtime Failed")
+
             tx.status = "failed"
-            tx.save()
+            tx.save(update_fields=["status", "response"])
+
             return {"success": False, "message": "Airtime failed, wallet refunded."}
 
         except Exception as e:
-            WalletService.refund(user, amount, note=f"Airtime {network} error")
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, amount, note="Refund - Airtime Error")
+
             tx.status = "failed"
             tx.response = {"error": str(e)}
-            tx.save()
-            return {"success": False, "message": f"Airtime error: {str(e)}"}
+            tx.save(update_fields=["status", "response"])
+
+            return {"success": False, "message": "Airtime error, wallet refunded."}
+
 
     def get_plan_object(plan_id: int) -> Optional[PriceTable]:
         """
