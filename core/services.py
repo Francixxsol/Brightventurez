@@ -229,145 +229,146 @@ class VTUService:
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_id, phone):
-    try:
-        plan = PriceTable.objects.get(id=plan_id, active=True)
-    except PriceTable.DoesNotExist:
-        return {"success": False, "message": "Data plan not found"}
 
-    if not plan.network_id or not plan.plan_code:
-        return {"success": False, "message": "Invalid VTU configuration"}
+        try:
+            plan = PriceTable.objects.get(id=plan_id, active=True)
+        except PriceTable.DoesNotExist:
+            return {"success": False, "message": "Data plan not found"}
 
-    vtu_reference = generate_reference()
-    while VTUTransaction.objects.filter(reference=vtu_reference).exists():
+        if not plan.network_id or not plan.plan_code:
+            return {"success": False, "message": "Invalid VTU configuration"}
+
         vtu_reference = generate_reference()
+        while VTUTransaction.objects.filter(reference=vtu_reference).exists():
+            vtu_reference = generate_reference()
 
-    # 🔥 debit wallet (NO transaction_type)
-    ok, err, wallet_tx = WalletService.debit_user(
-        user=user,
-        amount=plan.my_price,
-        note=f"{plan.network} {plan.plan_name} {phone}",
-        reference=vtu_reference
-    )
+        # Debit wallet
+        ok, err, wallet_tx = WalletService.debit_user(
+            user=user,
+            amount=plan.my_price,
+            note=f"{plan.network} {plan.plan_name} {phone}",
+            reference=vtu_reference
+        )
 
-    if not ok:
-        return {"success": False, "message": err}
+        if not ok:
+            return {"success": False, "message": err}
 
-    tx = VTUTransaction.objects.create(
-        user=user,
-        reference=vtu_reference,
-        service="data",
-        network=plan.network,
-        phone=phone,
-        amount=plan.my_price,
-        status="pending"
-    )
+        tx = VTUTransaction.objects.create(
+            user=user,
+            reference=vtu_reference,
+            service="data",
+            network=plan.network,
+            phone=phone,
+            amount=plan.my_price,
+            status="pending"
+        )
 
-    payload = {
-        "networkId": int(plan.network_id),
-        "MobileNumber": phone,
-        "DataPlan": int(plan.plan_code),
-        "ref": vtu_reference
-    }
+        payload = {
+            "networkId": int(plan.network_id),
+            "MobileNumber": phone,
+            "DataPlan": int(plan.plan_code),
+            "ref": vtu_reference
+        }
 
-    try:
-        r = requests.post(VTU_DATA_URL, json=payload, headers=HEADERS, timeout=30)
-        r.raise_for_status()
-        data = r.json()
+        try:
+            r = requests.post(VTU_DATA_URL, json=payload, headers=HEADERS, timeout=30)
+            r.raise_for_status()
+            data = r.json()
 
-        tx.response = data
+            tx.response = data
 
-        if data.get("code") == 101:
-            tx.status = "success"
+            if data.get("code") == 101:
+                tx.status = "success"
+                tx.save(update_fields=["status", "response"])
+                WalletService.mark_success(wallet_tx)
+                return {"success": True, "message": "Data sent successfully"}
+
+            # API failure
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, plan.my_price, note="Refund - Data Failed")
+
+            tx.status = "failed"
             tx.save(update_fields=["status", "response"])
-            WalletService.mark_success(wallet_tx)
-            return {"success": True, "message": "Data sent successfully"}
 
-        # ❌ API failure
-        WalletService.mark_failed(wallet_tx)
-        WalletService.credit_user(user, plan.my_price, note="Refund - Data Failed")
+            return {"success": False, "message": "VTU Failed, wallet refunded"}
 
-        tx.status = "failed"
-        tx.save(update_fields=["status", "response"])
+        except Exception as e:
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, plan.my_price, note="Refund - Data Error")
 
-        return {"success": False, "message": "VTU Failed, wallet refunded"}
+            tx.status = "failed"
+            tx.response = {"error": str(e)}
+            tx.save(update_fields=["status", "response"])
 
-    except Exception as e:
-        WalletService.mark_failed(wallet_tx)
-        WalletService.credit_user(user, plan.my_price, note="Refund - Data Error")
+            return {"success": False, "message": "Transaction error, wallet refunded"}
 
-        tx.status = "failed"
-        tx.response = {"error": str(e)}
-        tx.save(update_fields=["status", "response"])
+    @staticmethod
+    @transaction.atomic
+    def buy_airtime(user, network, phone, amount):
 
-        return {"success": False, "message": "Transaction error, wallet refunded"}
+        amount = Decimal(amount)
 
-   @staticmethod
-   @transaction.atomic
-   def buy_airtime(user, network, phone, amount):
-
-    amount = Decimal(amount)
-
-    vtu_reference = generate_reference()
-    while VTUTransaction.objects.filter(reference=vtu_reference).exists():
         vtu_reference = generate_reference()
+        while VTUTransaction.objects.filter(reference=vtu_reference).exists():
+            vtu_reference = generate_reference()
 
-    ok, err, wallet_tx = WalletService.debit_user(
-        user=user,
-        amount=amount,
-        note=f"Airtime {network} {phone}",
-        reference=vtu_reference
-    )
+        ok, err, wallet_tx = WalletService.debit_user(
+            user=user,
+            amount=amount,
+            note=f"Airtime {network} {phone}",
+            reference=vtu_reference
+        )
 
-    if not ok:
-        return {"success": False, "message": err}
+        if not ok:
+            return {"success": False, "message": err}
 
-    tx = VTUTransaction.objects.create(
-        user=user,
-        reference=vtu_reference,
-        service="airtime",
-        network=network,
-        phone=phone,
-        amount=amount,
-        status="pending"
-    )
+        tx = VTUTransaction.objects.create(
+            user=user,
+            reference=vtu_reference,
+            service="airtime",
+            network=network,
+            phone=phone,
+            amount=amount,
+            status="pending"
+        )
 
-    payload = {
-        "network": network,
-        "phone": phone,
-        "amount": int(amount),
-        "ref": vtu_reference
-    }
+        payload = {
+            "network": network,
+            "phone": phone,
+            "amount": int(amount),
+            "ref": vtu_reference
+        }
 
-    try:
-        r = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
-        r.raise_for_status()
-        data = r.json()
+        try:
+            r = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
+            r.raise_for_status()
+            data = r.json()
 
-        tx.response = data
+            tx.response = data
 
-        if data.get("code") == 101:
-            tx.status = "success"
+            if data.get("code") == 101:
+                tx.status = "success"
+                tx.save(update_fields=["status", "response"])
+                WalletService.mark_success(wallet_tx)
+                return {"success": True, "message": "Airtime sent successfully!"}
+
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, amount, note="Refund - Airtime Failed")
+
+            tx.status = "failed"
             tx.save(update_fields=["status", "response"])
-            WalletService.mark_success(wallet_tx)
-            return {"success": True, "message": "Airtime sent successfully!"}
 
-        WalletService.mark_failed(wallet_tx)
-        WalletService.credit_user(user, amount, note="Refund - Airtime Failed")
+            return {"success": False, "message": "Airtime failed, wallet refunded"}
 
-        tx.status = "failed"
-        tx.save(update_fields=["status", "response"])
+        except Exception as e:
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(user, amount, note="Refund - Airtime Error")
 
-        return {"success": False, "message": "Airtime failed, wallet refunded"}
+            tx.status = "failed"
+            tx.response = {"error": str(e)}
+            tx.save(update_fields=["status", "response"])
 
-    except Exception as e:
-        WalletService.mark_failed(wallet_tx)
-        WalletService.credit_user(user, amount, note="Refund - Airtime Error")
-
-        tx.status = "failed"
-        tx.response = {"error": str(e)}
-        tx.save(update_fields=["status", "response"])
-
-        return {"success": False, "message": "Airtime error, wallet refunded"}
+            return {"success": False, "message": "Airtime error, wallet refunded"}
 
 
     def get_plan_object(plan_id: int) -> Optional[PriceTable]:
