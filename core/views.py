@@ -225,19 +225,16 @@ def verify_payment(request):
 
     # 5. Wallet credit
     note = f"Funded via Paystack (gross {gross}, fee {PROCESSING_FEE})"
-
     WalletService.credit_user(
         user=user,
         amount=credited,
         reference=reference,
-        note=note,
-        transaction_type="credit"
+        note=note
     )
 
     # 6. Final redirect
-    messages.success(request, f"Wallet funded successfully with ₦{credited}")
+    messages.success(request, f"Wallet funded successfully with  ^b {credited}")
     return redirect("core:dashboard")
-
 
 # -------------------- Buy Data --------------------
 @method_decorator(login_required, name="dispatch")
@@ -268,11 +265,18 @@ class BuyDataView(View):
 
         amount = Decimal(plan.my_price)
 
+        # ✅ Check Wallet Balance FIRST
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+
+        if wallet.balance < amount:
+            messages.error(request, "Insufficient wallet balance. Please fund your wallet.")
+            return redirect("core:fund_wallet")
+
         # Call VTUService
         response = VTUService.buy_data(
             user=request.user,
             plan_network=plan.network,
-            plan_code=plan.plan_code,  # make sure your model has `plan_code`
+            plan_code=plan.plan_code,
             phone=phone,
             amount=amount
         )
@@ -284,8 +288,9 @@ class BuyDataView(View):
 
         return redirect("core:buy_data")
 
-
-# -------------------- Buy Airtime --------------------
+#-----------------
+#buy airtime
+#-----------------
 @method_decorator(login_required, name="dispatch")
 class BuyAirtimeView(View):
 
@@ -311,6 +316,13 @@ class BuyAirtimeView(View):
             messages.error(request, "Invalid airtime amount.")
             return redirect("core:buy_airtime")
 
+        # ✅ Check Wallet Balance FIRST
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+
+        if wallet.balance < amount:
+            messages.error(request, "Insufficient wallet balance. Please fund your wallet.")
+            return redirect("core:fund_wallet")
+
         # Call VTUService
         response = VTUService.buy_airtime(
             user=request.user,
@@ -325,6 +337,7 @@ class BuyAirtimeView(View):
             messages.success(request, f"Airtime {amount} successfully sent to {phone}")
 
         return redirect("core:buy_airtime")
+
 
 # -----------------------------
 # Paystack webhook (robust)
