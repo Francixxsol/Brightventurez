@@ -97,7 +97,13 @@ class PriceTable(models.Model):
         ("DIRECT", "Direct Data"),
         ("DATACARD", "Data Card"),
         ("SMILE_DIRECT", "Smile Direct"),
+        ("SPECIAL", "Special Plan"),  # ✅ Added
     ]
+
+    plan_type = models.CharField(
+        max_length=20,
+        choices=PLAN_TYPE_CHOICES,
+    )
 
     NETWORK_CHOICES = [
         ("MTN", "MTN"),
