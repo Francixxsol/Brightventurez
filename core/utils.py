@@ -162,9 +162,3 @@ def get_or_create_wallet(user):
     )
     return wallet
 
-def generate_reference(prefix="TXN"):
-    """
-    Generate a cryptographically safe unique transaction reference.
-    Example: TXN-9F2A6C81B3D4E
-    """
-    return f"{prefix}-{uuid.uuid4().hex[:12].upper()}"

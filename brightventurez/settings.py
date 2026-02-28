@@ -157,3 +157,16 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_USER')  # Your email
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASS')  # App password if Gmail
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG" if DEBUG else "INFO",
+    },
+}

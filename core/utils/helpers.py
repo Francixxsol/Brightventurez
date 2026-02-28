@@ -9,7 +9,17 @@ def parse_decimal(value, default=Decimal("0.00")):
     except (InvalidOperation, ValueError, TypeError):
         return default
 
-def generate_reference(prefix="TXN"):
-    ts = int(time.time())
-    unique_id = uuid.uuid4().hex[:6].upper()
-    return f"{prefix}-{ts}-{unique_id}"
+def extract_message(data):
+    """
+    Safely extract response message from EPINS response.
+    Handles both string and dict descriptions.
+    """
+    description = data.get("description")
+
+    if isinstance(description, dict):
+        return description.get("response_description", "Transaction processed")
+
+    if isinstance(description, str):
+        return description
+
+    return data.get("message", "Transaction processed")
