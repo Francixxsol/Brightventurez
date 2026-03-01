@@ -153,7 +153,6 @@ class WalletService:
     @staticmethod
     @transaction.atomic
     def debit_user(user, amount, note="", reference=None):
-        from core.models import WalletTransaction
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
         if wallet.balance < amount:
@@ -162,11 +161,20 @@ class WalletService:
         wallet.balance -= amount
         wallet.save(update_fields=["balance"])
 
+        # Generate a separate unique reference for the wallet transaction
+        wallet_ref = reference or uuid.uuid4().hex[:12].upper()
+        for _ in range(5):
+            if not WalletTransaction.objects.filter(reference=wallet_ref).exists():
+                break
+            wallet_ref = uuid.uuid4().hex[:12].upper()
+        else:
+            raise Exception("Could not generate unique wallet transaction reference after 5 attempts")
+
         tx = WalletTransaction.objects.create(
             user=user,
             transaction_type="debit",
             amount=amount,
-            reference=reference,
+            reference=wallet_ref,
             description=note,
             status="pending"
         )
@@ -175,16 +183,23 @@ class WalletService:
     @staticmethod
     @transaction.atomic
     def credit_user(user, amount, note="", reference=None):
-        from core.models import WalletTransaction
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         wallet.balance += Decimal(amount)
         wallet.save(update_fields=["balance"])
+
+        wallet_ref = reference or uuid.uuid4().hex[:12].upper()
+        for _ in range(5):
+            if not WalletTransaction.objects.filter(reference=wallet_ref).exists():
+                break
+            wallet_ref = uuid.uuid4().hex[:12].upper()
+        else:
+            raise Exception("Could not generate unique wallet transaction reference after 5 attempts")
 
         tx = WalletTransaction.objects.create(
             user=user,
             transaction_type="credit",
             amount=amount,
-            reference=reference,
+            reference=wallet_ref,
             description=note,
             status="success"
         )
