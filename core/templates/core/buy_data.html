@@ -5,51 +5,49 @@
   <h2>Buy Data</h2>
 
   <p class="wallet">
-    Wallet Balance: <strong>₦ {{ wallet.balance|floatformat:2 }}</strong>
+    Wallet Balance: <strong> ^b  {{ wallet.balance|floatformat:2 }}</strong>
   </p>
 
   {% if messages %}
     {% for message in messages %}
-      <div class="alert {{ message.tags }}">
+      <div class="alert {{ message.tags }}" data-message="{{ message.tags }}">
         {{ message }}
       </div>
     {% endfor %}
   {% endif %}
 
-  <form method="POST" action="{% url 'core:buy_data' %}">
+  <form method="POST" action="{% url 'core:buy_data' %}" id="buyDataForm">
     {% csrf_token %}
 
-<label>Select Network</label>
-<select name="network" id="network" required>
-    <option value="">-- Select Network --</option>
-    <option value="MTN">MTN</option>
-    <option value="GLO">GLO</option>
-    <option value="9MOBILE">9MOBILE</option>
-    <option value="AIRTEL">AIRTEL</option>
-</select>
+    <label>Select Network</label>
+    <select name="network" id="network" required>
+        <option value="">-- Select Network --</option>
+        <option value="MTN">MTN</option>
+        <option value="GLO">GLO</option>
+        <option value="9MOBILE">9MOBILE</option>
+        <option value="AIRTEL">AIRTEL</option>
+    </select>
 
-<label>Select Data Type</label>
-<select name="data_type" id="data_type" required>
-    <option value="">-- Select Data Type --</option>
-    <option value="SME">SME</option>
-    <option value="CG">Corporate</option>
-    <option value="DATACARD">DataCard</option>
-    <option value="SPECIAL">Special Plan</option>
-</select>
+    <label>Select Data Type</label>
+    <select name="data_type" id="data_type" required>
+        <option value="">-- Select Data Type --</option>
+        <option value="SME">SME</option>
+        <option value="CG">Corporate</option>
+        <option value="DATACARD">DataCard</option>
+        <option value="SPECIAL">Special Plan</option>
+    </select>
 
-<label>Select Plan</label>
-<select name="plan_id" id="plan_id" required>
-    <option value="">-- Select Plan --</option>
-</select>
+    <label>Select Plan</label>
+    <select name="plan_id" id="plan_id" required>
+        <option value="">-- Select Plan --</option>
+    </select>
 
-<div id="plan-info" style="margin-top:10px;">
-    <!-- Live plan info will appear here -->
-</div>
+    <div id="plan-info" style="margin-top:10px;"></div>
 
-<label>Enter Phone</label>
-<input type="text" name="phone" placeholder="080..." required>
+    <label>Enter Phone</label>
+    <input type="text" name="phone" placeholder="080..." required>
 
-<button type="submit">Buy Data</button>
+    <button type="submit" id="buyButton">Buy Data</button>
   </form>
 </section>
 
@@ -61,6 +59,7 @@
   background:#1a1b3a;
   color:#fff;
   border-radius:16px;
+  box-shadow: 0 0 25px rgba(75,108,183,0.3);
 }
 .card h2{text-align:center;margin-bottom:10px;}
 .wallet{text-align:center;margin-bottom:15px;}
@@ -81,6 +80,29 @@ button{
   border-radius:10px;
   color:#fff;
   font-weight:600;
+  cursor:pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+button:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 15px #6d8fff, 0 0 30px #4b6cb7;
+}
+button.loading::after {
+  content: '';
+  position: absolute;
+  top:0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(120deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.2) 100%);
+  animation: shimmer 1s linear infinite;
+  border-radius:10px;
+}
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
 }
 .alert{
   padding:10px;
@@ -91,12 +113,26 @@ button{
 .alert.success{background:#0abf53;}
 .alert.error{background:#d9534f;}
 .alert.warning{background:#f0a500;}
+/* Confetti canvas */
+#confetti-canvas{
+  position:fixed;
+  top:0;
+  left:0;
+  pointer-events:none;
+  width:100%;
+  height:100%;
+  z-index:9999;
+}
 </style>
+
+<canvas id="confetti-canvas"></canvas>
 
 <script>
 const network = document.getElementById("network");
 const dataType = document.getElementById("data_type");
 const planSelect = document.getElementById("plan_id");
+const buyForm = document.getElementById("buyDataForm");
+const buyButton = document.getElementById("buyButton");
 
 function loadPlans(){
   if(!network.value || !dataType.value) return;
@@ -111,7 +147,7 @@ function loadPlans(){
         data.plans.forEach(p => {
           const opt = document.createElement("option");
           opt.value = p.id;
-          opt.textContent = `${p.plan_name} (${p.duration || ""}) – ₦${p.my_price}`;
+          opt.textContent = `${p.plan_name} (${p.duration || ""}) - ₦ ${p.my_price}`;
           planSelect.appendChild(opt);
         });
       }else{
@@ -122,6 +158,62 @@ function loadPlans(){
 
 network.addEventListener("change", loadPlans);
 dataType.addEventListener("change", loadPlans);
+
+// Button shimmer animation
+buyForm.addEventListener("submit", e => {
+  buyButton.classList.add("loading");
+  buyButton.disabled = true;
+});
+
+// Confetti effect
+function launchConfetti(){
+  const canvas = document.getElementById("confetti-canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const confettiCount = 150;
+  const confetti = [];
+
+  for(let i=0; i<confettiCount; i++){
+    confetti.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height - canvas.height,
+      r: Math.random()*6 + 4,
+      d: Math.random()*confettiCount,
+      color: `hsl(${Math.random()*360}, 80%, 60%)`,
+      tilt: Math.random()*10 - 10
+    });
+  }
+
+  let angle = 0;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    confetti.forEach(f => {
+      ctx.beginPath();
+      ctx.lineWidth = f.r/2;
+      ctx.strokeStyle = f.color;
+      ctx.moveTo(f.x + f.tilt, f.y);
+      ctx.lineTo(f.x + f.tilt + f.r/2, f.y + f.tilt + f.r);
+      ctx.stroke();
+
+      f.y += Math.cos(angle + f.d) + 3 + f.r/2;
+      f.x += Math.sin(angle);
+      if(f.y > canvas.height){ f.y = -10; f.x = Math.random()*canvas.width; }
+    });
+    angle += 0.01;
+    requestAnimationFrame(draw);
+  }
+  draw();
+  // Stop after 3 seconds
+  setTimeout(()=> ctx.clearRect(0,0,canvas.width,canvas.height), 3000);
+}
+
+// Trigger confetti on success alerts
+document.addEventListener("DOMContentLoaded", () => {
+  const successAlerts = document.querySelectorAll(".alert.success");
+  if(successAlerts.length) launchConfetti();
+});
 </script>
 
 {% endblock %}

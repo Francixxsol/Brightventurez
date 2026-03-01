@@ -39,6 +39,28 @@ User = get_user_model()
 def home(request):
     return render(request, "core/home.html")
 
+    # Get all networks dynamically
+    networks_list = []
+
+    # Get distinct networks
+    distinct_networks = PriceTable.objects.values("network").distinct()
+
+    for n in distinct_networks:
+        network_name = n["network"]
+        # Get all plans for this network
+        plans = PriceTable.objects.filter(network=network_name).order_by("plan_type", "my_price")
+        networks_list.append({
+            "name": network_name,
+            "plans": plans
+        })
+
+    # Get reviews if you have them
+    reviews = Review.objects.all()[:5]  # adjust as needed
+
+    return render(request, "core/home.html", {
+        "networks": networks_list,
+        "reviews": reviews
+    })
 
 # -----------------------------
 # Register - creates wallet immediately and enqueues background job

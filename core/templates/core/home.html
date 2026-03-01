@@ -1,27 +1,133 @@
 {% extends "core/base.html" %}
 {% block content %}
+
+<!-- Hero Section -->
 <section class="card hero">
-  <h1>Cheaper Data. Faster VTU. Data → Cash.</h1>
-  <p class="sub">Buy data & airtime, convert airtime to cash, or sell your data for money.</p>
+  <h1>Cheaper Data. Faster VTU. Data Transformed into Cash.</h1>
+  <p class="sub">Buy data and airtime, convert airtime to cash, or sell your data for money. Your digital life empowered.</p>
   <p class="sub humor">
-    "From bytes to bucks, from airtime to vibes —<br>
-    Bright Venturez fuels your digital lives."
+    "From bytes to bucks, from airtime to vibes.<br>
+    Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, where connectivity never sleeps."
   </p>
   <div class="row gap">
-    <a class="btn primary" href="{% url 'core:register' %}">🚀 Get Started</a>
-    <a class="btn ghost" href="{% url 'core:buy_data' %}">📱 Buy Data</a>
+    <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>
+    <a class="btn ghost" href="{% url 'core:buy_data' %}">Buy Data</a>
   </div>
 </section>
 
+<!-- User Reviews Section -->
 <section class="card">
-  <h3>User Reviews 🌟</h3>
+  <h3>User Reviews</h3>
   <div class="carousel" id="reviewsCarousel">
     {% for r in reviews %}
       <div class="review-card">
-   <div class="review-name"> {{ r.name }}</div>
+        <div class="review-name">{{ r.name }}</div>
         <div class="review-text">{{ r.text }}</div>
       </div>
     {% endfor %}
   </div>
 </section>
+
+<!-- Plans Section -->
+<section class="card">
+  <h3>Explore Our Plans</h3>
+  <p class="sub">Select a network and plan type to see exactly what your data will look like before it dances into your phone.</p>
+
+  <!-- Filters -->
+  <div class="filters">
+    <label>Network</label>
+    <select id="networkFilter">
+      <option value="">-- Select Network --</option>
+      {% for network in networks %}
+        <option value="{{ network.name }}">{{ network.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label>Plan Type</label>
+    <select id="planTypeFilter">
+      <option value="">-- Select Plan Type --</option>
+      <option value="SME">SME</option>
+      <option value="CG">Corporate</option>
+      <option value="Gifting">Gifting</option>
+      <option value="CGlite">CGlite</option>
+      <option value="Special">Special Plan</option>
+      <option value="Datacard">Data Card</option>
+    </select>
+  </div>
+
+  <!-- Plans Table -->
+  <div class="plans-container" id="plansContainer">
+    {% for network in networks %}
+      <h4>{{ network.name }} Plans</h4>
+      <table class="plans-table">
+        <thead>
+          <tr>
+            <th>Plan Type</th>
+            <th>Plan Name</th>
+            <th>Duration</th>
+            <th>Epin Code</th>
+            <th>Our Price (₦)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for plan in network.plans %}
+          <tr class="plan-row" data-network="{{ network.name }}" data-plan-type="{{ plan.plan_type }}">
+            <td>{{ plan.plan_type|title }}</td>
+            <td>{{ plan.plan_name }}</td>
+            <td>{{ plan.duration }}</td>
+            <td>{{ plan.epin }}</td>
+            <td>{{ plan.my_price }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Footer Address & Info Links -->
+<section class="card footer-info">
+  <div class="footer-address">
+    <h4>Our Location</h4>
+    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>
+  </div>
+  <div class="footer-links">
+    <h4>Info Pages</h4>
+    <ul>
+      <li><a href="{% url 'core:about' %}">About Us</a></li>
+      <li><a href="{% url 'core:services' %}">Services</a></li>
+      <li><a href="{% url 'core:contact' %}">Contact</a></li>
+    </ul>
+  </div>
+</section>
+
+<!-- JavaScript for dynamic filtering -->
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const networkSelect = document.getElementById("networkFilter");
+  const planTypeSelect = document.getElementById("planTypeFilter");
+  const planRows = document.querySelectorAll(".plan-row");
+
+  function filterPlans() {
+    const selectedNetwork = networkSelect.value;
+    const selectedPlanType = planTypeSelect.value;
+
+    planRows.forEach(row => {
+      const rowNetwork = row.dataset.network;
+      const rowPlanType = row.dataset.planType;
+
+      if ((selectedNetwork === "" || rowNetwork === selectedNetwork) &&
+          (selectedPlanType === "" || rowPlanType.toLowerCase() === selectedPlanType.toLowerCase())) {
+        row.style.display = "";
+      } else {
+        row.style.display = "none";
+      }
+    });
+  }
+
+  networkSelect.addEventListener("change", filterPlans);
+  planTypeSelect.addEventListener("change", filterPlans);
+});
+</script>
+
 {% endblock %}
