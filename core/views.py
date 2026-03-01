@@ -310,7 +310,7 @@ class BuyDataView(View):
             amount=amount,
             transaction_type="debit",
             status="pending",
-            reference=f"DATA-{plan.id}-{request.user.id}",
+            reference=f"DATA-{generate_reference()}",
             description=f"Buying {plan.plan_name} for {phone}"
         )
 
