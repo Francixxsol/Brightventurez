@@ -242,37 +242,57 @@ class BuyDataView(View):
 
     def get(self, request):
         wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        plans = PriceTable.objects.all().order_by("network", "plan_name")
+
         return render(request, "core/buy_data.html", {
-            "wallet": wallet,
-            "plans": plans
+            "wallet": wallet
         })
 
     @transaction.atomic
     def post(self, request):
-        network = request.POST.get("network")
-        plan_id = request.POST.get("plan_id")
-        phone = request.POST.get("phone")
+        network = request.POST.get("network", "").strip()
+        plan_id = request.POST.get("plan_id", "").strip()
+        phone = request.POST.get("phone", "").strip()
 
+        # 1️⃣ Basic validation
         if not all([network, plan_id, phone]):
             messages.error(request, "All fields are required.")
             return redirect("core:buy_data")
 
-        plan = PriceTable.objects.filter(id=plan_id, network=network).first()
+        # 2️⃣ Lock selected plan
+        plan = PriceTable.objects.select_for_update().filter(
+            id=plan_id,
+            network=network
+        ).first()
+
         if not plan:
             messages.error(request, "Invalid plan selected.")
             return redirect("core:buy_data")
 
-        amount = Decimal(plan.my_price)
+        amount = plan.my_price  # already Decimal if model is correct
 
-        # ✅ Check Wallet Balance FIRST
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        # 3️⃣ Lock wallet row
+        wallet = Wallet.objects.select_for_update().get(user=request.user)
 
+        # 4️⃣ Check balance
         if wallet.balance < amount:
             messages.error(request, "Insufficient wallet balance. Please fund your wallet.")
             return redirect("core:fund_wallet")
 
-        # Call VTUService
+        # 5️⃣ Debit wallet first
+        wallet.balance -= amount
+        wallet.save()
+
+        # 6️⃣ Create transaction record (recommended)
+        trx = Transaction.objects.create(
+            user=request.user,
+            amount=amount,
+            transaction_type="debit",
+            status="pending",
+            reference=f"DATA-{plan.id}-{request.user.id}",
+            description=f"Buying {plan.plan_name} for {phone}"
+        )
+
+        # 7️⃣ Call VTU API
         response = VTUService.buy_data(
             user=request.user,
             plan_network=plan.network,
@@ -281,12 +301,29 @@ class BuyDataView(View):
             amount=amount
         )
 
+        # 8️⃣ Handle API response
         if not response.get("success"):
+            # Refund
+            wallet.balance += amount
+            wallet.save()
+
+            trx.status = "failed"
+            trx.save()
+
             messages.error(request, response.get("message", "Transaction failed"))
-        else:
-            messages.success(request, f"{plan.plan_name} successfully sent to {phone}")
+            return redirect("core:buy_data")
+
+        # Success
+        trx.status = "success"
+        trx.save()
+
+        messages.success(
+            request,
+            f"{plan.plan_name} successfully sent to {phone}"
+        )
 
         return redirect("core:buy_data")
+
 
 #-----------------
 #buy airtime
@@ -508,28 +545,29 @@ def sell_data_view(request):
 
 @login_required
 def get_plans(request):
-    network = request.GET.get("network")
-    data_type = request.GET.get("data_type")  # plan_type from frontend
+    network = request.GET.get("network", "").strip()
+    data_type = request.GET.get("data_type", "").strip().lower()
+
     plans = []
 
     if network and data_type:
-        # ✅ Use __iexact to ignore case mismatches
         qs = PriceTable.objects.filter(
             network=network,
             plan_type__iexact=data_type
-        ).order_by('my_price')  # optional: sort by cost
+        ).order_by("my_price")
 
-        for plan in qs:
-            plans.append({
+        plans = [
+            {
                 "id": plan.id,
                 "plan_name": plan.plan_name,
-                "duration": getattr(plan, "duration", ""),  # safe if not set
-                "my_price": float(plan.my_price),  # JSON-safe
-                "api_code": getattr(plan, "plan_code", plan.plan_name)  # fallback
-            })
+                "duration": getattr(plan, "duration", ""),
+                "my_price": str(plan.my_price),  # safer than float
+                "api_code": getattr(plan, "plan_code", plan.plan_name)
+            }
+            for plan in qs
+        ]
 
     return JsonResponse({"plans": plans})
-
 
 def generate_reference(length=12):
     """
