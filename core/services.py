@@ -218,18 +218,26 @@ class WalletService:
 
 #Vtu services
 class VTUService:
-    MAX_RETRIES = 3        # how many times to retry network requests
-    RETRY_DELAY = 2        # seconds to wait between retries
+    MAX_RETRIES = 3        # retry attempts for network requests
+    RETRY_DELAY = 2        # seconds between retries
+
+    # Mapping for data (numeric codes) according to Epins network variation
+    DATA_NETWORK_CODES = {
+        "MTN": "01",
+        "GLO": "02",
+        "9MOBILE": "03",
+        "AIRTEL": "04"
+    }
 
     @staticmethod
     @transaction.atomic
     def buy_airtime(user, network, phone, amount):
-        """Send Airtime via EPINS with unique reference retry"""
+        """Send Airtime via EPINS (network names, string)"""
         amount = int(amount)
         ref = generate_reference()
 
         payload = {
-            "network": str(network).upper().strip(),
+            "network": str(network).upper().strip(),  # string name for airtime
             "phone": str(phone).strip(),
             "amount": amount,
             "ref": ref
@@ -247,7 +255,6 @@ class VTUService:
         if not ok:
             return {"success": False, "message": error}
 
-        # Create VTU transaction
         tx = VTUTransaction.objects.create(
             user=user,
             reference=ref,
@@ -258,10 +265,14 @@ class VTUService:
             status="pending"
         )
 
-        # Retry loop
         for attempt in range(1, VTUService.MAX_RETRIES + 1):
             try:
-                response = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
+                response = requests.post(
+                    VTU_AIRTIME_URL,
+                    json=payload,
+                    headers=HEADERS,
+                    timeout=30
+                )
                 data = response.json()
                 tx.response = data
 
@@ -271,13 +282,12 @@ class VTUService:
                     WalletService.mark_success(wallet_tx)
                     return {"success": True, "message": extract_message(data)}
 
-                break  # provider returned error code, no need to retry
+                break  # No retry if provider returned an error
 
             except requests.exceptions.RequestException as e:
-                print(f"Airtime Attempt {attempt} failed: {e}")
+                print(f"Airtime attempt {attempt} failed: {e}")
                 if attempt < VTUService.MAX_RETRIES:
                     import time; time.sleep(VTUService.RETRY_DELAY)
-                    continue
                 else:
                     tx.response = {"error": str(e)}
                     break
@@ -294,16 +304,19 @@ class VTUService:
         tx.save(update_fields=["status", "response"])
         return {"success": False, "message": "Transaction failed or network error. Wallet refunded."}
 
-
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_network, plan_code, phone, amount):
-        """Send Data via EPINS with retry mechanism like Airtime"""
+        """Send Data via EPINS (networkId numeric codes)"""
         amount = int(amount)
         ref = generate_reference()
 
+        network_id = VTUService.DATA_NETWORK_CODES.get(plan_network.upper())
+        if not network_id:
+            return {"success": False, "message": f"Unsupported network: {plan_network}"}
+
         payload = {
-            "networkId": str(plan_network).zfill(2),
+            "networkId": network_id,              # numeric code for data
             "MobileNumber": str(phone).strip(),
             "DataPlan": int(plan_code),
             "ref": ref
@@ -321,7 +334,6 @@ class VTUService:
         if not ok:
             return {"success": False, "message": error}
 
-        # Create VTU transaction
         tx = VTUTransaction.objects.create(
             user=user,
             reference=ref,
@@ -332,43 +344,48 @@ class VTUService:
             status="pending"
         )
 
-        # Retry loop for network calls
-        for attempt in range(1, VTUService.MAX_RETRIES + 1):
-            try:
-                response = requests.post(VTU_DATA_URL, json=payload, headers=HEADERS, timeout=30)
-                data = response.json()
-                tx.response = data
+        try:
+            response = requests.post(
+                VTU_DATA_URL,
+                json=payload,
+                headers=HEADERS,
+                timeout=30
+            )
+            data = response.json()
+            tx.response = data
 
-                print("VTU Response:", data, "Status Code:", response.status_code)
+            print("VTU Response:", data, "Status Code:", response.status_code)
 
-                if response.status_code == 200 and str(data.get("code")) == "101":
-                    tx.status = "success"
-                    tx.save(update_fields=["status", "response"])
-                    WalletService.mark_success(wallet_tx)
-                    return {"success": True, "message": extract_message(data)}
+            if response.status_code == 200 and str(data.get("code")) == "101":
+                tx.status = "success"
+                tx.save(update_fields=["status", "response"])
+                WalletService.mark_success(wallet_tx)
+                return {"success": True, "message": extract_message(data)}
 
-                break  # provider returned error code, no need to retry
+            # Failed → Refund
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(
+                user=user,
+                amount=amount,
+                note=f"Refund - Data {plan_code} Failed",
+                reference=ref
+            )
+            tx.status = "failed"
+            tx.save(update_fields=["status", "response"])
+            return {"success": False, "message": extract_message(data)}
 
-            except requests.exceptions.RequestException as e:
-                print(f"Data Attempt {attempt} failed: {e}")
-                if attempt < VTUService.MAX_RETRIES:
-                    import time; time.sleep(VTUService.RETRY_DELAY)
-                    continue
-                else:
-                    tx.response = {"error": str(e)}
-                    break
-
-        # Refund if failed
-        WalletService.mark_failed(wallet_tx)
-        WalletService.credit_user(
-            user=user,
-            amount=amount,
-            note=f"Refund - Data {plan_code} Failed",
-            reference=ref
-        )
-        tx.status = "failed"
-        tx.save(update_fields=["status", "response"])
-        return {"success": False, "message": "Transaction failed or network error. Wallet refunded."}
+        except requests.exceptions.RequestException as e:
+            WalletService.mark_failed(wallet_tx)
+            WalletService.credit_user(
+                user=user,
+                amount=amount,
+                note=f"Refund - Data {plan_code} Network Error",
+                reference=ref
+            )
+            tx.status = "failed"
+            tx.response = {"error": str(e)}
+            tx.save(update_fields=["status", "response"])
+            return {"success": False, "message": f"Network error. Wallet refunded: {str(e)}"}
 
 #-+-+-+-+-+-+-+-
 #get plans
