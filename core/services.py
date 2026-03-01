@@ -151,30 +151,9 @@ class PaystackService:
 class WalletService:
 
     @staticmethod
-    def _generate_wallet_reference():
-        return uuid.uuid4().hex.upper()[:12]  # 12 chars, random enough
-
-    @staticmethod
-    def _create_transaction(user, transaction_type, amount, note, status, reference=None):
-        # Try up to 5 times to avoid duplicates
-        for _ in range(5):
-            if reference is None:
-                reference = WalletService._generate_wallet_reference()
-            if not WalletTransaction.objects.filter(reference=reference).exists():
-                return WalletTransaction.objects.create(
-                    user=user,
-                    transaction_type=transaction_type,
-                    amount=amount,
-                    reference=reference,
-                    description=note,
-                    status=status
-                )
-            reference = WalletService._generate_wallet_reference()
-        raise Exception("Could not generate unique wallet transaction reference after 5 attempts")
-
-    @staticmethod
     @transaction.atomic
     def debit_user(user, amount, note="", reference=None):
+        from core.models import WalletTransaction
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         amount = Decimal(amount)
         if wallet.balance < amount:
@@ -183,30 +162,31 @@ class WalletService:
         wallet.balance -= amount
         wallet.save(update_fields=["balance"])
 
-        tx = WalletService._create_transaction(
+        tx = WalletTransaction.objects.create(
             user=user,
             transaction_type="debit",
             amount=amount,
-            note=note,
-            status="pending",
-            reference=reference
+            reference=reference,
+            description=note,
+            status="pending"
         )
         return True, None, tx
 
     @staticmethod
     @transaction.atomic
     def credit_user(user, amount, note="", reference=None):
+        from core.models import WalletTransaction
         wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
         wallet.balance += Decimal(amount)
         wallet.save(update_fields=["balance"])
 
-        tx = WalletService._create_transaction(
+        tx = WalletTransaction.objects.create(
             user=user,
             transaction_type="credit",
             amount=amount,
-            note=note,
-            status="success",
-            reference=reference
+            reference=reference,
+            description=note,
+            status="success"
         )
         return True, None, tx
 
@@ -220,109 +200,28 @@ class WalletService:
         wallet_tx.status = "failed"
         wallet_tx.save(update_fields=["status"])
 
+
 #Vtu services
 class VTUService:
 
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2  # seconds
+
     @staticmethod
-    @transaction.atomic
-    def buy_airtime(user, network, phone, amount):
-        """Send Airtime via EPINS"""
-
-        amount = int(amount)
-        ref = generate_reference()
-
-        payload = {
-            "network": str(network).upper().strip(),
-            "phone": str(phone).strip(),
-            "amount": amount,
-            "ref": ref
-        }
-
-        print("Sending Airtime payload:", payload)
-
-        ok, error, wallet_tx = WalletService.debit_user(
-            user=user,
-            amount=amount,
-            note=f"Airtime {network} {phone}",
-            reference=ref
-        )
-
-        if not ok:
-            return {"success": False, "message": error}
-
-        tx = VTUTransaction.objects.create(
-            user=user,
-            reference=ref,
-            service="airtime",
-            network=network,
-            phone=phone,
-            amount=amount,
-            status="pending"
-        )
-
-        try:
-            response = requests.post(
-                VTU_AIRTIME_URL,
-                json=payload,
-                headers=HEADERS,
-                timeout=30
-            )
-
-            data = response.json()
-            tx.response = data
-
-            if response.status_code == 200 and data.get("code") == 101:
-                tx.status = "success"
-                tx.save(update_fields=["status", "response"])
-                WalletService.mark_success(wallet_tx)
-
-                return {
-                    "success": True,
-                    "message": extract_message(data)
-                }
-
-            # Failed → Refund
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Airtime {network} Failed",
-                reference=ref
-            )
-
-            tx.status = "failed"
-            tx.save(update_fields=["status", "response"])
-
-            return {
-                "success": False,
-                "message": extract_message(data)
-            }
-
-        except Exception as e:
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Airtime {network} Error",
-                reference=ref
-            )
-
-            tx.status = "failed"
-            tx.response = {"error": str(e)}
-            tx.save(update_fields=["status", "response"])
-
-            return {
-                "success": False,
-                "message": f"Airtime error, wallet refunded: {str(e)}"
-            }
+    def generate_unique_transaction_reference(max_attempts=5):
+        """Generate unique VTUTransaction reference"""
+        for _ in range(max_attempts):
+            ref = generate_reference()
+            if not VTUTransaction.objects.filter(reference=ref).exists():
+                return ref
+        raise Exception("Could not generate unique VTUTransaction reference after multiple attempts")
 
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_network, plan_code, phone, amount):
-        """Send Data via EPINS"""
-
+        """Send Data via EPINS with unique reference retry"""
         amount = int(amount)
-        ref = generate_reference()
+        ref = VTUService.generate_unique_transaction_reference()
 
         payload = {
             "networkId": str(plan_network).zfill(2),
@@ -333,16 +232,17 @@ class VTUService:
 
         print("Sending Data payload:", payload)
 
+        # Debit wallet
         ok, error, wallet_tx = WalletService.debit_user(
             user=user,
             amount=amount,
             note=f"Data Purchase {phone} Plan {plan_code}",
             reference=ref
         )
-
         if not ok:
             return {"success": False, "message": error}
 
+        # Create VTU transaction
         tx = VTUTransaction.objects.create(
             user=user,
             reference=ref,
@@ -353,61 +253,114 @@ class VTUService:
             status="pending"
         )
 
-        try:
-            response = requests.post(
-                VTU_DATA_URL,
-                json=payload,
-                headers=HEADERS,
-                timeout=30
-            )
+        # Send request
+        for attempt in range(1, VTUService.MAX_RETRIES + 1):
+            try:
+                response = requests.post(VTU_DATA_URL, json=payload, headers=HEADERS, timeout=30)
+                data = response.json()
+                tx.response = data
 
-            data = response.json()
-            tx.response = data
+                if response.status_code == 200 and str(data.get("code")) == "101":
+                    tx.status = "success"
+                    tx.save(update_fields=["status", "response"])
+                    WalletService.mark_success(wallet_tx)
+                    return {"success": True, "message": extract_message(data)}
 
-            if response.status_code == 200 and data.get("code") == 101:
-                tx.status = "success"
-                tx.save(update_fields=["status", "response"])
-                WalletService.mark_success(wallet_tx)
+                break  # API returned but failed
 
-                return {
-                    "success": True,
-                    "message": extract_message(data)
-                }
+            except requests.exceptions.RequestException as e:
+                print(f"Attempt {attempt} failed: {e}")
+                if attempt < VTUService.MAX_RETRIES:
+                    import time; time.sleep(VTUService.RETRY_DELAY)
+                    continue
+                else:
+                    tx.response = {"error": str(e)}
+                    break
 
-            # Failed → Refund
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Data {plan_code} Failed",
-                reference=ref
-            )
+        # Refund if failed
+        WalletService.mark_failed(wallet_tx)
+        WalletService.credit_user(
+            user=user,
+            amount=amount,
+            note=f"Refund - Data {plan_code} Failed",
+            reference=ref
+        )
+        tx.status = "failed"
+        tx.save(update_fields=["status", "response"])
+        return {"success": False, "message": "Transaction failed or network error. Wallet refunded."}
 
-            tx.status = "failed"
-            tx.save(update_fields=["status", "response"])
+    @staticmethod
+    @transaction.atomic
+    def buy_airtime(user, network, phone, amount):
+        """Send Airtime via EPINS with unique reference retry"""
+        amount = int(amount)
+        ref = VTUService.generate_unique_transaction_reference()
 
-            return {
-                "success": False,
-                "message": extract_message(data)
-            }
+        payload = {
+            "network": str(network).upper().strip(),
+            "phone": str(phone).strip(),
+            "amount": amount,
+            "ref": ref
+        }
 
-        except Exception as e:
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Data {plan_code} Error",
-                reference=ref
-            )
+        print("Sending Airtime payload:", payload)
 
-            tx.status = "failed"
-            tx.response = {"error": str(e)}
-            tx.save(update_fields=["status", "response"])
+        # Debit wallet
+        ok, error, wallet_tx = WalletService.debit_user(
+            user=user,
+            amount=amount,
+            note=f"Airtime {network} {phone}",
+            reference=ref
+        )
+        if not ok:
+            return {"success": False, "message": error}
 
-            return {
-                "success": False,
-                "message": f"Data error, wallet refunded: {str(e)}"
-            }
+        # Create VTU transaction
+        tx = VTUTransaction.objects.create(
+            user=user,
+            reference=ref,
+            service="airtime",
+            network=network,
+            phone=phone,
+            amount=amount,
+            status="pending"
+        )
+
+        # Send request
+        for attempt in range(1, VTUService.MAX_RETRIES + 1):
+            try:
+                response = requests.post(VTU_AIRTIME_URL, json=payload, headers=HEADERS, timeout=30)
+                data = response.json()
+                tx.response = data
+
+                if response.status_code == 200 and str(data.get("code")) == "101":
+                    tx.status = "success"
+                    tx.save(update_fields=["status", "response"])
+                    WalletService.mark_success(wallet_tx)
+                    return {"success": True, "message": extract_message(data)}
+
+                break
+
+            except requests.exceptions.RequestException as e:
+                print(f"Attempt {attempt} failed: {e}")
+                if attempt < VTUService.MAX_RETRIES:
+                    import time; time.sleep(VTUService.RETRY_DELAY)
+                    continue
+                else:
+                    tx.response = {"error": str(e)}
+                    break
+
+        # Refund if failed
+        WalletService.mark_failed(wallet_tx)
+        WalletService.credit_user(
+            user=user,
+            amount=amount,
+            note=f"Refund - Airtime {network} Failed",
+            reference=ref
+        )
+        tx.status = "failed"
+        tx.save(update_fields=["status", "response"])
+        return {"success": False, "message": "Transaction failed or network error. Wallet refunded."}
 
 
 #-+-+-+-+-+-+-+-
