@@ -1,22 +1,4 @@
-from django.urls import path
-from django.contrib.auth import views as auth_views
-from . import views
-
-app_name = "core"
-
-urlpatterns = [
-    # Home & Auth
-    path("", views.home, name="home"),
-    path("register/", views.register_view, name="register"),
-
-    # Login
-    path(
-        "login/",
-        auth_views.LoginView.as_view(template_name="core/login.html"),
-        name="login",
-    ),
-
-    path("logout/", views.logout_view, name="logout"),
+t_view, name="logout"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("change-password/", views.change_password, name="change_password"),
 
@@ -73,4 +55,7 @@ urlpatterns = [
     path("about/", views.about, name="about"),
     path("services/", views.services, name="services"),
     path("contact/", views.contact, name="contact"),
+
+    # Plans Page
+    path("plans/", views.plans, name="plans"),
 ]

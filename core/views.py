@@ -606,3 +606,78 @@ def services(request):
 
 def contact(request):
     return render(request, "core/contact.html")
+
+def plans(request):
+    # Full plans data (only "Our Price")
+    networks = [
+        {
+            "name": "9Mobile",
+            "color": "#28a745",  # Greenish highlight for 9Mobile
+            "plans": [
+                {"plan_type": "CG", "plan_name": "1GB (CG) - 30days", "our_price": 380},
+                {"plan_type": "CG", "plan_name": "1.5GB (CG) - 30days", "our_price": 500},
+                {"plan_type": "CG", "plan_name": "2GB (CG) - 30days", "our_price": 680},
+                {"plan_type": "CG", "plan_name": "3GB (CG) - 30days", "our_price": 950},
+                {"plan_type": "CG", "plan_name": "4GB (CG) - 30days", "our_price": 1220},
+                {"plan_type": "CG", "plan_name": "5GB (CG) - 30days", "our_price": 1520},
+                {"plan_type": "CG", "plan_name": "10GB (CG) - 30days", "our_price": 2950},
+                {"plan_type": "SME", "plan_name": "1.6GB (SME) - 30days", "our_price": 580},
+                {"plan_type": "SME", "plan_name": "2.3GB (SME) - 30days", "our_price": 780},
+                {"plan_type": "SME", "plan_name": "3.3GB (SME) - 30days", "our_price": 1080},
+                {"plan_type": "SME", "plan_name": "4.5GB (SME) - 30days", "our_price": 1780},
+                {"plan_type": "SME", "plan_name": "5GB (SME) - 30days", "our_price": 1880},
+                {"plan_type": "SME", "plan_name": "10GB (SME) - 30days", "our_price": 3150},
+            ]
+        },
+        {
+            "name": "Glo",
+            "color": "#ffc107",  # Yellow highlight for Glo
+            "plans": [
+                {"plan_type": "CG", "plan_name": "500MB (CG) - 30days", "our_price": 315},
+                {"plan_type": "CG", "plan_name": "1GB (CG) - 30days", "our_price": 500},
+                {"plan_type": "CG", "plan_name": "2GB (CG) - 30days", "our_price": 950},
+                {"plan_type": "CG", "plan_name": "3GB (CG) - 30days", "our_price": 1370},
+                {"plan_type": "CG", "plan_name": "5GB (CG) - 30days", "our_price": 2230},
+                {"plan_type": "CG", "plan_name": "10GB (CG) - 30days", "our_price": 4400},
+                {"plan_type": "SME", "plan_name": "500MB (SME) - 30days", "our_price": 340},
+                {"plan_type": "SME", "plan_name": "1GB (SME) - 30days", "our_price": 580},
+                {"plan_type": "SME", "plan_name": "2GB (SME) - 30days", "our_price": 1070},
+                {"plan_type": "SME", "plan_name": "3GB (SME) - 30days", "our_price": 1580},
+                {"plan_type": "SME", "plan_name": "10GB (SME) - 30days", "our_price": 5000},
+                {"plan_type": "Special", "plan_name": "1GB (Special) - 3days", "our_price": 380},
+                {"plan_type": "Special", "plan_name": "1GB (Special) - 7days", "our_price": 450},
+                {"plan_type": "Special", "plan_name": "3GB (Special) - 7days", "our_price": 1100},
+                {"plan_type": "Special", "plan_name": "5GB (Special) - 7days", "our_price": 1810},
+            ]
+        },
+        {
+            "name": "MTN",
+            "color": "#007bff",  # Blue highlight for MTN
+            "plans": [
+                {"plan_type": "SME", "plan_name": "500MB (SME) - 30days", "our_price": 480},
+                {"plan_type": "SME", "plan_name": "1GB (SME) - 7days", "our_price": 580},
+                {"plan_type": "SME", "plan_name": "1GB (SME) - 30days", "our_price": 645},
+                {"plan_type": "SME", "plan_name": "2GB (SME) - 30days", "our_price": 1220},
+                {"plan_type": "SME", "plan_name": "3GB (SME) - 30days", "our_price": 1810},
+                {"plan_type": "SME", "plan_name": "5GB (SME) - 30days", "our_price": 2920},
+                {"plan_type": "SME", "plan_name": "20GB (SME) - 7days", "our_price": 11500},
+                {"plan_type": "Special", "plan_name": "1GB DAILY", "our_price": 245},
+                {"plan_type": "Special", "plan_name": "500MB (Special) - 7days", "our_price": 450},
+                {"plan_type": "Special", "plan_name": "2.5GB DAILY", "our_price": 630},
+            ]
+        },
+        {
+            "name": "Airtel",
+            "color": "#dc3545",  # Red highlight for Airtel
+            "plans": [
+                {"plan_type": "SME", "plan_name": "1GB Weekly Plan (7 Days)", "our_price": 870},
+                {"plan_type": "SME", "plan_name": "2GB Monthly Plan", "our_price": 1580},
+                {"plan_type": "SME", "plan_name": "3GB Binge Plan", "our_price": 1080},
+                {"plan_type": "SME", "plan_name": "8.5GB Weekly Plan", "our_price": 3080},
+                {"plan_type": "Special", "plan_name": "250MB Night Plan", "our_price": 50},
+                {"plan_type": "Special", "plan_name": "200MB Social Plan", "our_price": 100},
+                {"plan_type": "Special", "plan_name": "3GB Monthly Plan", "our_price": 2080},
+            ]
+        },
+    ]
+    return render(request, "core/plans.html", {"networks": networks})

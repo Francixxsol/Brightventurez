@@ -2,12 +2,17 @@
 {% block content %}
 
 <!-- Hero Section -->
-<section class="card hero">
+<section class="card hero" style="text-align:center;">
+  <!-- Pulsing Logo -->
+  <img src="https://drive.google.com/uc?export=view&id=1DuB0g2KCi0qvIj86TXsYuvyrGxHevdNS" 
+       alt="Bright Venturez Logo" 
+       class="responsive-logo pulse-logo">
+
   <h1>Cheaper Data. Faster VTU. Data Transformed into Cash.</h1>
   <p class="sub">Buy data and airtime, convert airtime to cash, or sell your data for money. Your digital life empowered.</p>
   <p class="sub humor">
     "From bytes to bucks, from airtime to vibes.<br>
-    Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network."
+    Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, where connectivity never sleeps"
   </p>
   <div class="row gap">
     <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>
@@ -26,111 +31,107 @@
       </div>
     {% endfor %}
   </div>
-</section>
 
-<!-- Plans Section -->
-<section class="card">
-  <h3>Explore Our Plans</h3>
-  <p class="sub">Select a network and plan type to see exactly what your data will look like before it dances into your phone.</p>
-
-  <!-- Filters -->
-  <div class="filters">
-    <label>Network</label>
-    <select id="networkFilter">
-      <option value="">-- Select Network --</option>
-      {% for network in networks %}
-        <option value="{{ network.name|upper }}">{{ network.name|title }}</option>
-      {% endfor %}
-    </select>
-
-    <label>Plan Type</label>
-    <select id="planTypeFilter">
-      <option value="">-- Select Plan Type --</option>
-      <option value="sme">SME</option>
-      <option value="cg">Corporate</option>
-      <option value="gifting">Gifting</option>
-      <option value="cglite">CGlite</option>
-      <option value="special">Special Plan</option>
-      <option value="datacard">Data Card</option>
-    </select>
-  </div>
-
-  <!-- Plans Table -->
-  <div class="plans-container" id="plansContainer">
-    {% for network in networks %}
-      <h4>{{ network.name|title }} Plans</h4>
-      <table class="plans-table">
-        <thead>
-          <tr>
-            <th>Plan Type</th>
-            <th>Plan Name</th>
-            <th>Duration</th>
-            <th>Epin Code</th>
-            <th>Our Price (₦)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for plan in network.plans %}
-          <tr class="plan-row" data-network="{{ network.name|upper }}" data-plan-type="{{ plan.plan_type|lower }}">
-            <td>{{ plan.plan_type|title }}</td>
-            <td>{{ plan.plan_name }}</td>
-            <td>{{ plan.duration }}</td>
-            <td>{{ plan.epin }}</td>
-            <td>₦ {{ plan.my_price|floatformat:2 }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% endfor %}
+  <!-- Call-to-Action Button to Plans -->
+  <div style="text-align:center; margin-top:20px;">
+    <a href="{% url 'core:plans' %}" class="btn primary">See All Plans</a>
   </div>
 </section>
 
-<!-- JavaScript for dynamic filtering -->
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const networkSelect = document.getElementById("networkFilter");
-  const planTypeSelect = document.getElementById("planTypeFilter");
-  const planRows = document.querySelectorAll(".plan-row");
-
-  function filterPlans() {
-    const selectedNetwork = networkSelect.value.trim().toLowerCase();
-    const selectedPlanType = planTypeSelect.value.trim().toLowerCase();
-
-    planRows.forEach(row => {
-      const rowNetwork = row.dataset.network.trim().toLowerCase();
-      const rowPlanType = row.dataset.planType.trim().toLowerCase();
-
-      if ((selectedNetwork === "" || rowNetwork === selectedNetwork) &&
-          (selectedPlanType === "" || rowPlanType === selectedPlanType)) {
-        row.style.display = "";
-      } else {
-        row.style.display = "none";
-      }
-    });
-  }
-
-  networkSelect.addEventListener("change", filterPlans);
-  planTypeSelect.addEventListener("change", filterPlans);
-});
-</script>
+<!-- Footer Address & Info Links -->
+<section class="card footer-info">
+  <div class="footer-address">
+    <h4>Our Location</h4>
+    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>
+  </div>
+  <div class="footer-links">
+    <h4>Info Pages</h4>
+    <ul>
+      <li><a href="{% url 'core:about' %}">About Us</a></li>
+      <li><a href="{% url 'core:services' %}">Services</a></li>
+      <li><a href="{% url 'core:contact' %}">Contact</a></li>
+    </ul>
+  </div>
+</section>
 
 <style>
-.card {
-  max-width: 900px;
-  margin: 30px auto;
-  padding: 20px;
+/* Responsive logo */
+.responsive-logo {
+  max-width: 180px;
+  width: 50%;
+  height: auto;
+  margin-bottom: 15px;
+}
+
+/* Pulse animation */
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.pulse-logo {
+  animation: pulse 2.5s infinite ease-in-out;
+}
+
+@media (max-width: 768px) {
+  .responsive-logo {
+    width: 70%;
+    max-width: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .responsive-logo {
+    width: 90%;
+    max-width: 120px;
+  }
+}
+
+/* Footer styling */
+.footer-info {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
   background: #1a1b3a;
   color: #fff;
-  border-radius: 16px;
-  box-shadow: 0 0 25px rgba(75,108,183,0.3);
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 30px;
 }
-.card h2, .card h3, .card h4 { margin-bottom: 15px; }
-.filters { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
-.filters label { display: block; margin-top: 10px; font-size: 14px; }
-.filters select { padding: 8px 12px; border-radius: 8px; border: none; }
-.plans-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-.plans-table th, .plans-table td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.2); }
-.plans-table th { background: rgba(255,255,255,0.05); }
+.footer-info h4 {
+  margin-bottom: 8px;
+}
+.footer-info ul {
+  list-style: none;
+  padding: 0;
+}
+.footer-info ul li {
+  margin-bottom: 6px;
+}
+.footer-info a {
+  color: #4b6cb7;
+  text-decoration: none;
+}
+.footer-info a:hover {
+  text-decoration: underline;
+}
+
+/* Call-to-action button */
+.btn.primary {
+  background: #4b6cb7;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.btn.primary:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(75,108,183,0.5);
+}
 </style>
 
 {% endblock %}
