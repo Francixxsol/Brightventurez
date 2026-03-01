@@ -318,7 +318,7 @@ class VTUService:
     def buy_airtime(user, network, phone, amount):
         """Send Airtime via EPINS with unique reference retry"""
         amount = int(amount)
-        ref = VTUService.generate_unique_transaction_reference()
+        ref = generate_reference()
 
         payload = {
             "network": str(network).upper().strip(),
