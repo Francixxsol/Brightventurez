@@ -1,97 +1,176 @@
 {% extends "core/base.html" %}
-{% load static %}
 {% block content %}
 
+<section class="card">
+  <h2>Buy Airtime</h2>
+
+<p class="wallet">
+    Wallet Balance: <strong>&#8358; {{ wallet.balance|floatformat:2 }}</strong>
+</p>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert {{ message.tags }}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="POST" action="{% url 'core:buy_airtime' %}" id="buyAirtimeForm">
+    {% csrf_token %}
+
+    <label>Select Network</label>
+    <select name="network" id="airtimeNetwork" required>
+        <option value="">-- Select Network --</option>
+        <option value="MTN">MTN</option>
+        <option value="GLO">GLO</option>
+        <option value="9MOBILE">9MOBILE</option>
+        <option value="AIRTEL">AIRTEL</option>
+    </select>
+
+     <label>Enter Amount (&#8358;)</label>
+    <input type="number" name="amount" id="airtimeAmount" min="1" placeholder="Enter amount" required>
+
+    <label>Phone Number</label>
+    <input type="tel" name="phone" id="airtimePhone" placeholder="08012345678" required>
+
+    <button type="submit" id="buyAirtimeButton">Buy Airtime</button>
+  </form>
+</section>
+
 <style>
-/* --- LEVEL 3 BUY AIRTIME STYLING --- */
-.container { max-width: 900px; margin: auto; padding: 20px; }
-.card { background: #1a1b3a; border-radius: 12px; padding: 20px; margin-bottom: 20px; color: #fff; }
-.card h2 { margin-bottom: 15px; }
-.wallet-balance { font-size: 28px; font-weight: 700; margin-bottom: 10px; }
-.input-field { margin-bottom: 15px; }
-.input-field label { display: block; margin-bottom: 5px; font-weight: 500; }
-.input-field input, .input-field select { width: 100%; padding: 10px; border-radius: 8px; border: none; }
-.btn-primary { background: #3b3dbf; color: #fff; padding: 10px 18px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; }
-.btn-primary:hover { background: #292a7d; }
-.alert { padding: 10px; margin-bottom: 15px; border-radius: 6px; }
-.alert-success { background: #0abf53; color: #fff; }
-.alert-error { background: #d9534f; color: #fff; }
-.alert-warning { background: #f0a500; color: #fff; }
+.card{
+  max-width:420px;
+  margin:30px auto;
+  padding:20px;
+  background:#1a1b3a;
+  color:#fff;
+  border-radius:16px;
+  box-shadow: 0 0 25px rgba(75,108,183,0.3);
+}
+.card h2{text-align:center;margin-bottom:15px;}
+.wallet{text-align:center;margin-bottom:15px;}
+label{display:block;margin-top:12px;font-size:14px;}
+select,input{
+  width:100%;
+  padding:10px;
+  border-radius:8px;
+  border:none;
+  margin-top:6px;
+}
+button{
+  margin-top:18px;
+  width:100%;
+  padding:12px;
+  background:#4b6cb7;
+  border:none;
+  border-radius:10px;
+  color:#fff;
+  font-weight:600;
+  cursor:pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+button:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 15px #6d8fff, 0 0 30px #4b6cb7;
+}
+button.loading::after {
+  content: '';
+  position: absolute;
+  top:0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(120deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.5) 50%, rgba(255,255,255,0.2) 100%);
+  animation: shimmer 1s linear infinite;
+  border-radius:10px;
+}
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+.alert{
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+  font-weight:600;
+}
+.alert.success{background:#0abf53;}
+.alert.error{background:#d9534f;}
+.alert.warning{background:#f0a500;}
+#confetti-canvas{
+  position:fixed;
+  top:0;
+  left:0;
+  pointer-events:none;
+  width:100%;
+  height:100%;
+  z-index:9999;
+}
 </style>
 
-<div class="container">
+<canvas id="confetti-canvas"></canvas>
 
-    <!-- Wallet Balance -->
-    <div class="card text-center">
-        <h2>Wallet Balance</h2>
-        <div class="wallet-balance">₦ {{ wallet_balance|floatformat:2 }}</div>
-    </div>
+<script>
+// Button shimmer animation
+const airtimeForm = document.getElementById("buyAirtimeForm");
+const airtimeButton = document.getElementById("buyAirtimeButton");
 
-    <!-- Messages -->
-    {% if messages %}
-        {% for m in messages %}
-            <div class="alert {% if m.tags %}alert-{{ m.tags }}{% endif %}">{{ m }}</div>
-        {% endfor %}
-    {% endif %}
+airtimeForm.addEventListener("submit", e => {
+  airtimeButton.classList.add("loading");
+  airtimeButton.disabled = true;
+});
 
-    <!-- Airtime Form -->
-    <div class="card">
-        <h2>Buy Airtime</h2>
-        <form method="POST" action="{% url 'core:buy_airtime' %}">
-            {% csrf_token %}
-            <div class="input-field">
-                <label for="network">Network</label>
-                <select name="network" id="network" required>
-                    <option value="">Select Network</option>
-                    <option value="MTN">MTN</option>
-                    <option value="GLO">GLO</option>
-                    <option value="AIRTEL">AIRTEL</option>
-                    <option value="9MOBILE">9MOBILE</option>
-                </select>
-            </div>
+// Confetti effect
+function launchConfetti(){
+  const canvas = document.getElementById("confetti-canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 
-            <div class="input-field">
-                <label for="amount">Amount (₦)</label>
-                <input type="number" name="amount" id="amount" min="1" placeholder="Enter amount" required>
-            </div>
+  const confettiCount = 150;
+  const confetti = [];
 
-            <div class="input-field">
-                <label for="phone">Phone Number</label>
-                <input type="tel" name="phone" id="phone" placeholder="08012345678" required>
-            </div>
+  for(let i=0; i<confettiCount; i++){
+    confetti.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height - canvas.height,
+      r: Math.random()*6 + 4,
+      d: Math.random()*confettiCount,
+      color: `hsl(${Math.random()*360}, 80%, 60%)`,
+      tilt: Math.random()*10 - 10
+    });
+  }
 
-            <button type="submit" class="btn-primary">Buy Airtime</button>
-        </form>
-    </div>
+  let angle = 0;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    confetti.forEach(f => {
+      ctx.beginPath();
+      ctx.lineWidth = f.r/2;
+      ctx.strokeStyle = f.color;
+      ctx.moveTo(f.x + f.tilt, f.y);
+      ctx.lineTo(f.x + f.tilt + f.r/2, f.y + f.tilt + f.r);
+      ctx.stroke();
 
-    <!-- Recent Transactions (optional) -->
-    {% if transactions %}
-    <div class="card">
-        <h2>Recent Transactions</h2>
-        {% for tx in transactions %}
-        <div class="tx-card" style="margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <strong>{{ tx.transaction_type|title }}</strong> - Ref: {{ tx.reference }}<br>
-                    <small>{{ tx.created_at|date:"F j, Y - H:i A" }}</small>
-                </div>
-                <div>
-                    ₦ {{ tx.amount|floatformat:2 }}<br>
-                    {% if tx.status == "success" %}
-                        <span class="success">Successful</span>
-                    {% elif tx.status == "failed" %}
-                        <span class="failed">Failed</span>
-                    {% else %}
-                        <span class="pending">Pending</span>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-        <a class="btn-primary" href="{% url 'core:user_transactions' %}">View All Transactions</a>
-    </div>
-    {% endif %}
+      f.y += Math.cos(angle + f.d) + 3 + f.r/2;
+      f.x += Math.sin(angle);
+      if(f.y > canvas.height){ f.y = -10; f.x = Math.random()*canvas.width; }
+    });
+    angle += 0.01;
+    requestAnimationFrame(draw);
+  }
+  draw();
+  setTimeout(()=> ctx.clearRect(0,0,canvas.width,canvas.height), 3000);
+}
 
-</div>
+// Trigger confetti on success alerts
+document.addEventListener("DOMContentLoaded", () => {
+  const successAlerts = document.querySelectorAll(".alert.success");
+  if(successAlerts.length) launchConfetti();
+});
+</script>
 
 {% endblock %}
