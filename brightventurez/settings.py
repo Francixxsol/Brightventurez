@@ -106,15 +106,18 @@ LOGIN_REDIRECT_URL = "/dashboard/"
 # API KEYS (TEST KEYS YOU PROVIDED)
 # ===============================
 # Paystack
-PAYSTACK_SECRET_KEY = "sk_test_e54dd453161e97d551ee75ad99ffc6ab1ecf25dd"
+PAYSTACK_SECRET_KEY = "sk_live_c252b5afcacabce1c2e1276a3a6fad1d7d504a60"
 PAYSTACK_BASE_URL = "https://api.paystack.co"
 PAYSTACK_CALLBACK_URL = "https://brightventurez.online/payment/verify/"  # production
-PROVIDER_SUBACCOUNT = "ACCT_q1us193ulmhcyzo"
+PROVIDER_SUBACCOUNT = "ACCT_07npgzzsswo839r"
+
+
+
 
 
 # VTU API configuration
-VTU_API_KEY="QvT8G9HlAjB3PQjIBHe5AunEwJfGxwfGmBJV3wzg9uI2gMuF8C"
-VTU_BASE_URL="https://api.epins.com.ng/sandbox"
+VTU_API_KEY="aZZmwMI5SGjiXYIgQQRRUP1oEukKNBa3Wug0I71iq8xyzOaWBOww9WUUo7ujI9orHXuAKJjoj1yYs67P9iD83LDVJoUhQUdEwHiPSU7Sb5gk5bmITiWG6RNZ"
+VTU_BASE_URL="https://api.epins.com.ng/v3/autho"
 PROCESSING_FEE=40
 PLATFORM_MIN_PROFIT=150
 MIN_PLATFORM_PCT=2
