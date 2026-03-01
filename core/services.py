@@ -237,7 +237,7 @@ class VTUService:
         ref = generate_reference()
 
         payload = {
-            "network": str(network).upper().strip(),  # string name for airtime
+            "network": str(network).lower().strip(),
             "phone": str(phone).strip(),
             "amount": amount,
             "ref": ref
