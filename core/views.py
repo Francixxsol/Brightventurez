@@ -269,19 +269,18 @@ class BuyDataView(View):
             "wallet": wallet
         })
 
-    @transaction.atomic
     def post(self, request):
         network = request.POST.get("network", "").strip()
         plan_id = request.POST.get("plan_id", "").strip()
         phone = request.POST.get("phone", "").strip()
 
-        # 1️⃣ Basic validation
+        # 1. Basic validation
         if not all([network, plan_id, phone]):
             messages.error(request, "All fields are required.")
             return redirect("core:buy_data")
 
-        # 2️⃣ Lock selected plan
-        plan = PriceTable.objects.select_for_update().filter(
+        # 2. Get plan
+        plan = PriceTable.objects.filter(
             id=plan_id,
             network=network
         ).first()
@@ -290,31 +289,9 @@ class BuyDataView(View):
             messages.error(request, "Invalid plan selected.")
             return redirect("core:buy_data")
 
-        amount = plan.my_price  # already Decimal if model is correct
+        amount = plan.my_price
 
-        # 3️⃣ Lock wallet row
-        wallet = Wallet.objects.select_for_update().get(user=request.user)
-
-        # 4️⃣ Check balance
-        if wallet.balance < amount:
-            messages.error(request, "Insufficient wallet balance. Please fund your wallet.")
-            return redirect("core:fund_wallet")
-
-        # 5️⃣ Debit wallet first
-        wallet.balance -= amount
-        wallet.save()
-
-        # 6️⃣ Create transaction record (recommended)
-        trx = Transaction.objects.create(
-            user=request.user,
-            amount=amount,
-            transaction_type="debit",
-            status="pending",
-            reference=f"DATA-{generate_reference()}",
-            description=f"Buying {plan.plan_name} for {phone}"
-        )
-
-        # 7️⃣ Call VTU API
+        # 3. Call Service Layer (Service handles debit + VTU + refund logic)
         response = VTUService.buy_data(
             user=request.user,
             plan_network=plan.network,
@@ -323,21 +300,13 @@ class BuyDataView(View):
             amount=amount
         )
 
-        # 8️⃣ Handle API response
+        # 4. Handle response
         if not response.get("success"):
-            # Refund
-            wallet.balance += amount
-            wallet.save()
-
-            trx.status = "failed"
-            trx.save()
-
-            messages.error(request, response.get("message", "Transaction failed"))
+            messages.error(
+                request,
+                response.get("message", "Transaction failed")
+            )
             return redirect("core:buy_data")
-
-        # Success
-        trx.status = "success"
-        trx.save()
 
         messages.success(
             request,
@@ -345,7 +314,6 @@ class BuyDataView(View):
         )
 
         return redirect("core:buy_data")
-
 
 #-----------------
 #buy airtime
