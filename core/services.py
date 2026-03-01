@@ -218,7 +218,8 @@ class WalletService:
 
 #Vtu services
 class VTUService:
-
+    MAX_RETRIES = 3        # how many times to retry network requests
+    RETRY_DELAY = 2        # seconds to wait between retries
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_network, plan_code, phone, amount, max_attempts=5):
