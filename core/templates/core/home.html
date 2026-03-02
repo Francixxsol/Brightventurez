@@ -1,208 +1,104 @@
 {% extends "core/base.html" %}
 {% block content %}
 
-<!-- Floating CTA -->
-<div class="floating-cta">
-  <a class="btn primary pulse-btn neon-btn" href="{% url 'core:register' %}">Get Started</a>
-  <a class="btn ghost pulse-btn neon-btn" href="{% url 'core:buy_data' %}">Buy Data</a>
-</div>
+<!-- Hero Section -->  
+<section class="card hero" style="text-align:center;">  
+  <!-- Pulsing Logo -->  
+  <img src="https://drive.google.com/uc?export=view&id=1DuB0g2KCi0qvIj86TXsYuvyrGxHevdNS"  
+       alt="Bright Venturez Logo"  
+       class="responsive-logo pulse-logo">    
 
-<!-- Hero Section -->
-<section class="hero">
-  <div class="hero-container">
-    <!-- Logo with micro-glitch animation -->
-    <img src="https://i.postimg.cc/k5tZXHwj/logo.jpg"
-         alt="Bright Venturez Logo"
-         class="responsive-logo pulse-logo glitch-logo">
+  <h1>Cheaper Data. Faster VTU. Data Transformed into Cash.</h1>  
 
-    <h1 class="pulse-text neon-text">Cheaper Data. Faster VTU. Money Meets Speed.</h1>
-    <p class="sub pulse-text neon-text">Whether converting airtime into cash or buying data at warp speed, Bright Venturez keeps your digital life profitable, smooth, and slightly rebellious.</p>
+  <p class="sub">Buy data and airtime, convert airtime to cash, or sell your data for money. Your digital life, simplified.</p>  
 
-    <div class="hero-buttons">
-      <a class="btn primary pulse-btn neon-btn" href="{% url 'core:register' %}">Get Started</a>
-      <a class="btn ghost pulse-btn neon-btn" href="{% url 'core:buy_data' %}">Buy Data</a>
-    </div>
+  <p class="sub humor">  
+    "From bytes to bucks, from airtime to vibes.<br>  
+    Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, every giggle of your wallet."  
+  </p>  
 
-    <!-- Humor Descriptions -->
-    <p class="humor pulse-text neon-text">
-      "From bytes to bucks, from awkward 3G lags to smooth streaming vibes.<br>
-      Your wallet thanks you, and your inner tech nerd does a happy dance."
-    </p>
-    <p class="humor pulse-text neon-text">
-      "Your bank account might sleep, but Bright Venturez never does. <br>
-      We turn your data frustrations into dollar celebrations, one click at a time."
-    </p>
-  </div>
-</section>
+  <p class="sub humor">  
+    "Even your phone battery cheers when you make a smart move with Bright Venturez.<br>  
+    Slow 3G? We don’t know her. Lagging downloads? Not on our watch."  
+  </p>  
 
-<!-- User Reviews Section -->
-<section class="reviews">
-  <h3>What Our Users Say</h3>
-  <div class="carousel" id="reviewsCarousel">
-    {% for r in reviews %}
-      <div class="review-card">
-        <div class="review-name">{{ r.name }}</div>
-        <div class="review-text">{{ r.text }}</div>
-      </div>
-    {% endfor %}
-  </div>
-</section>
+  <p class="sub humor">  
+    "Turn your data frustrations into dopamine. Every megabyte bought or sold is a mini victory dance."  
+  </p>  
 
-<!-- Footer Address & Info Links -->
-<section class="footer-info">
-  <div class="footer-address">
-    <h4>Where We Are</h4>
-    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>
-  </div>
-  <div class="footer-links">
-    <h4>Info Pages</h4>
-    <ul>
-      <li><a href="{% url 'core:about' %}">About Us</a></li>
-      <li><a href="{% url 'core:services' %}">Services</a></li>
-      <li><a href="{% url 'core:contact' %}">Contact</a></li>
-    </ul>
-  </div>
-</section>
+  <div class="row gap">  
+    <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>  
+    <a class="btn ghost" href="{% url 'core:buy_data' %}">Buy Data</a>  
+  </div>  
+</section>  
 
-<!-- Styles -->
-<style>
-/* --- Floating CTA --- */
-.floating-cta {
-  position: fixed;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.95);
-  padding: 10px 20px;
-  border-radius: 50px;
-  display: flex;
-  gap: 15px;
-  z-index: 9999;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-}
-.floating-cta .btn { padding: 12px 25px; font-size: 1rem; }
-.floating-cta .btn.primary { background: #3B82F6; color: #fff; }
-.floating-cta .btn.ghost { background: transparent; border: 2px solid #3B82F6; color: #3B82F6; }
-.floating-cta .btn:hover { transform: scale(1.05); }
+<!-- User Reviews Section -->  
+<section class="card">  
+  <h3>User Reviews</h3>  
+  <div class="carousel" id="reviewsCarousel">  
+    {% for r in reviews %}  
+      <div class="review-card">  
+        <div class="review-name">{{ r.name }}</div>  
+        <div class="review-text">{{ r.text }}</div>  
+      </div>  
+    {% endfor %}  
+  </div>    
 
-/* --- Hero Section --- */
-.hero {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  color: #fff;
-  padding: 80px 20px;
-  border-radius: 20px;
-  margin-bottom: 40px;
-}
-.hero-container h1 { font-size: 2.8rem; font-weight: 700; margin: 20px 0 10px; }
-.hero-container .sub, .hero-container .humor { font-size: 1.1rem; line-height: 1.6; opacity: 0.85; margin-bottom: 15px; }
-.hero-buttons .btn { margin: 10px; border-radius: 10px; transition: all 0.3s ease; }
-.btn.primary { background: #3B82F6; color: #fff; font-weight: 600; }
-.btn.primary:hover { transform: scale(1.05); }
-.btn.ghost { background: transparent; border: 2px solid #fff; color: #fff; }
-.btn.ghost:hover { background: rgba(255,255,255,0.1); transform: scale(1.05); }
+  <!-- Call-to-Action Button to Plans -->    
+  <div style="text-align:center; margin-top:20px;">  
+    <a href="{% url 'core:plans' %}" class="btn primary">See All Plans</a>  
+  </div>  
+</section>  
 
-/* --- Logo animations --- */
-.responsive-logo { max-width: 180px; width: 50%; height: auto; margin-bottom: 15px; }
-.pulse-logo { animation: pulse 2.5s infinite ease-in-out; }
-@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
-.glitch-logo { position: relative; animation: glitch 2s infinite; }
-@keyframes glitch {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 2px); }
-  40% { transform: translate(2px, -2px); }
-  60% { transform: translate(-1px, 1px); }
-  80% { transform: translate(1px, -1px); }
-  100% { transform: translate(0); }
-}
+<!-- Footer Address & Info Links -->  
+<section class="card footer-info">  
+  <div class="footer-address">  
+    <h4>Our Location</h4>  
+    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>  
+  </div>  
+  <div class="footer-links">  
+    <h4>Info Pages</h4>  
+    <ul>  
+      <li><a href="{% url 'core:about' %}">About Us</a></li>  
+      <li><a href="{% url 'core:services' %}">Services</a></li>  
+      <li><a href="{% url 'core:contact' %}">Contact</a></li>  
+    </ul>  
+  </div>  
+</section>  
 
-/* --- Pulse animation for buttons and text --- */
-.pulse-btn, .pulse-text {
-  animation: pulse-sync 2.5s infinite ease-in-out;
-}
-@keyframes pulse-sync {
-  0% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.9; }
-}
+<style>  
+/* Responsive logo */  
+.responsive-logo {  
+  max-width: 180px;  
+  width: 50%;  
+  height: auto;  
+  margin-bottom: 15px;  
+}  
 
-/* --- Neon Glow --- */
-.neon-btn, .neon-text {
-  text-shadow:
-    0 0 5px #3B82F6,
-    0 0 10px #3B82F6,
-    0 0 20px #3B82F6,
-    0 0 40px #3B82F6,
-    0 0 80px #3B82F6;
-  animation: neon-pulse 2.5s infinite alternate;
-}
-@keyframes neon-pulse {
-  0% { text-shadow: 0 0 2px #3B82F6, 0 0 5px #3B82F6, 0 0 10px #3B82F6, 0 0 20px #3B82F6, 0 0 40px #3B82F6; }
-  50% { text-shadow: 0 0 5px #3B82F6, 0 0 15px #3B82F6, 0 0 30px #3B82F6, 0 0 50px #3B82F6, 0 0 80px #3B82F6; }
-  100% { text-shadow: 0 0 2px #3B82F6, 0 0 5px #3B82F6, 0 0 10px #3B82F6, 0 0 20px #3B82F6, 0 0 40px #3B82F6; }
-}
+/* Pulse animation */  
+@keyframes pulse {  
+  0% { transform: scale(1); }  
+  50% { transform: scale(1.08); }  
+  100% { transform: scale(1); }  
+}  
 
-/* --- Reviews Carousel --- */
-.reviews { padding: 50px 20px; background: #111827; border-radius: 20px; margin-bottom: 40px; color: #f1f5f9; text-align: center; }
-.reviews h3 { font-size: 2rem; margin-bottom: 30px; }
-.carousel { display: flex; overflow-x: auto; gap: 20px; scroll-behavior: smooth; padding-bottom: 10px; }
-.review-card { min-width: 250px; flex: 0 0 auto; background: #1e293b; border-radius: 15px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: all 0.5s ease; }
-.review-card:hover { transform: translateY(-5px); }
-.review-name { font-weight: 600; margin-bottom: 10px; color: #3B82F6; }
-.review-text { font-size: 0.95rem; line-height: 1.4; color: #e2e8f0; }
+.pulse-logo {  
+  animation: pulse 2.5s infinite ease-in-out;  
+}  
 
-/* Highlight active review card */
-.review-card.active-card { transform: translateY(-10px) scale(1.05); box-shadow: 0 8px 25px rgba(59, 130, 246, 0.7), 0 0 15px rgba(59, 130, 246, 0.5) inset; }
+@media (max-width: 768px) {  
+  .responsive-logo {  
+    width: 70%;  
+    max-width: 140px;  
+  }  
+}  
 
-/* --- Footer --- */
-.footer-info { display: flex; justify-content: space-between; flex-wrap: wrap; padding: 40px 20px; background: #0f172a; color: #fff; border-radius: 20px; }
-.footer-info h4 { margin-bottom: 10px; }
-.footer-links ul { list-style: none; padding: 0; }
-.footer-links li { margin-bottom: 8px; }
-.footer-links a { color: #fff; text-decoration: none; }
-.footer-links a:hover { text-decoration: underline; }
-
-/* --- Responsive --- */
-@media (max-width: 768px) {
-  .hero-container h1 { font-size: 2rem; }
-  .btn { font-size: 1rem; padding: 12px 25px; }
-  .carousel { gap: 15px; }
-  .review-card { min-width: 200px; }
-}
-@media (max-width: 480px) {
-  .hero-container h1 { font-size: 1.6rem; }
-  .btn { font-size: 0.95rem; padding: 10px 20px; }
-  .review-card { min-width: 180px; }
-}
+@media (max-width: 480px) {  
+  .responsive-logo {  
+    width: 90%;  
+    max-width: 120px;  
+  }  
+}  
 </style>
-
-<!-- JS: Auto-scroll + highlight active review card -->
-<script>
-const carousel = document.getElementById('reviewsCarousel');
-const reviewCards = carousel ? carousel.querySelectorAll('.review-card') : [];
-let currentIndex = 0;
-
-function highlightCard(index) {
-  reviewCards.forEach((card, i) => card.classList.toggle('active-card', i === index));
-}
-
-if (reviewCards.length > 0) {
-  highlightCard(currentIndex);
-
-  setInterval(() => {
-    currentIndex = (currentIndex + 1) % reviewCards.length;
-    highlightCard(currentIndex);
-
-    const activeCard = reviewCards[currentIndex];
-    const carouselRect = carousel.getBoundingClientRect();
-    const cardRect = activeCard.getBoundingClientRect();
-    const scrollLeft = carousel.scrollLeft + cardRect.left - carouselRect.left - (carouselRect.width / 2 - cardRect.width / 2);
-    carousel.scrollTo({ left: scrollLeft, behavior: 'smooth' });
-  }, 3500);
-}
-</script>
 
 {% endblock %}
