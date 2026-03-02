@@ -218,10 +218,9 @@ class WalletService:
 
 #Vtu services
 class VTUService:
-    MAX_RETRIES = 3        # retry attempts for network requests
-    RETRY_DELAY = 2        # seconds between retries
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2
 
-    # Mapping for data (numeric codes) according to Epins network variation
     DATA_NETWORK_CODES = {
         "MTN": "01",
         "GLO": "02",
@@ -232,12 +231,11 @@ class VTUService:
     @staticmethod
     @transaction.atomic
     def buy_airtime(user, network, phone, amount):
-        """Send Airtime via EPINS (network names, string)"""
         amount = int(amount)
         ref = generate_reference()
 
         payload = {
-            "network": str(network).lower().strip(),
+            "network": str(network).upper().strip(),   # <-- back to UPPERCASE
             "phone": str(phone).strip(),
             "amount": amount,
             "ref": ref
@@ -245,13 +243,13 @@ class VTUService:
 
         print("Sending Airtime payload:", payload)
 
-        # Debit wallet
         ok, error, wallet_tx = WalletService.debit_user(
             user=user,
             amount=amount,
             note=f"Airtime {network} {phone}",
             reference=ref
         )
+
         if not ok:
             return {"success": False, "message": error}
 
@@ -265,34 +263,29 @@ class VTUService:
             status="pending"
         )
 
-        for attempt in range(1, VTUService.MAX_RETRIES + 1):
-            try:
-                response = requests.post(
-                    VTU_AIRTIME_URL,
-                    json=payload,
-                    headers=HEADERS,
-                    timeout=30
-                )
-                data = response.json()
-                tx.response = data
+        try:
+            response = requests.post(
+                VTU_AIRTIME_URL,
+                json=payload,
+                headers=HEADERS,
+                timeout=30
+            )
 
-                if response.status_code == 200 and str(data.get("code")) == "101":
-                    tx.status = "success"
-                    tx.save(update_fields=["status", "response"])
-                    WalletService.mark_success(wallet_tx)
-                    return {"success": True, "message": extract_message(data)}
+            data = response.json()
+            tx.response = data
+            print("Airtime Response:", data)
 
-                break  # No retry if provider returned an error
+            if response.status_code == 200 and str(data.get("code")) == "101":
+                tx.status = "success"
+                tx.save(update_fields=["status", "response"])
+                WalletService.mark_success(wallet_tx)
+                return {"success": True, "message": extract_message(data)}
 
-            except requests.exceptions.RequestException as e:
-                print(f"Airtime attempt {attempt} failed: {e}")
-                if attempt < VTUService.MAX_RETRIES:
-                    import time; time.sleep(VTUService.RETRY_DELAY)
-                else:
-                    tx.response = {"error": str(e)}
-                    break
+        except requests.exceptions.RequestException as e:
+            tx.response = {"error": str(e)}
+            print("Airtime Exception:", e)
 
-        # Refund if failed
+        # Refund
         WalletService.mark_failed(wallet_tx)
         WalletService.credit_user(
             user=user,
@@ -300,14 +293,16 @@ class VTUService:
             note=f"Refund - Airtime {network} Failed",
             reference=ref
         )
+
         tx.status = "failed"
         tx.save(update_fields=["status", "response"])
-        return {"success": False, "message": "Transaction failed or network error. Wallet refunded."}
+
+        return {"success": False, "message": "Airtime transaction failed. Wallet refunded."}
+
 
     @staticmethod
     @transaction.atomic
     def buy_data(user, plan_network, plan_code, phone, amount):
-        """Send Data via EPINS (networkId numeric codes)"""
         amount = int(amount)
         ref = generate_reference()
 
@@ -316,7 +311,7 @@ class VTUService:
             return {"success": False, "message": f"Unsupported network: {plan_network}"}
 
         payload = {
-            "networkId": network_id,              # numeric code for data
+            "networkId": network_id,
             "MobileNumber": str(phone).strip(),
             "DataPlan": int(plan_code),
             "ref": ref
@@ -324,13 +319,13 @@ class VTUService:
 
         print("Sending Data payload:", payload)
 
-        # Debit wallet
         ok, error, wallet_tx = WalletService.debit_user(
             user=user,
             amount=amount,
             note=f"Data Purchase {phone} Plan {plan_code}",
             reference=ref
         )
+
         if not ok:
             return {"success": False, "message": error}
 
@@ -351,10 +346,10 @@ class VTUService:
                 headers=HEADERS,
                 timeout=30
             )
+
             data = response.json()
             tx.response = data
-
-            print("VTU Response:", data, "Status Code:", response.status_code)
+            print("Data Response:", data)
 
             if response.status_code == 200 and str(data.get("code")) == "101":
                 tx.status = "success"
@@ -362,30 +357,24 @@ class VTUService:
                 WalletService.mark_success(wallet_tx)
                 return {"success": True, "message": extract_message(data)}
 
-            # Failed → Refund
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Data {plan_code} Failed",
-                reference=ref
-            )
-            tx.status = "failed"
-            tx.save(update_fields=["status", "response"])
-            return {"success": False, "message": extract_message(data)}
-
         except requests.exceptions.RequestException as e:
-            WalletService.mark_failed(wallet_tx)
-            WalletService.credit_user(
-                user=user,
-                amount=amount,
-                note=f"Refund - Data {plan_code} Network Error",
-                reference=ref
-            )
-            tx.status = "failed"
             tx.response = {"error": str(e)}
-            tx.save(update_fields=["status", "response"])
-            return {"success": False, "message": f"Network error. Wallet refunded: {str(e)}"}
+            print("Data Exception:", e)
+
+        # Refund
+        WalletService.mark_failed(wallet_tx)
+        WalletService.credit_user(
+            user=user,
+            amount=amount,
+            note=f"Refund - Data {plan_code} Failed",
+            reference=ref
+        )
+
+        tx.status = "failed"
+        tx.save(update_fields=["status", "response"])
+
+        return {"success": False, "message": "Data transaction failed. Wallet refunded."}
+
 
 #-+-+-+-+-+-+-+-
 #get plans
