@@ -12,21 +12,20 @@
 
   <p class="sub">Buy data and airtime, convert airtime to cash, or sell your data for money. Your digital life, simplified.</p>  
 
-  <p class="sub humor">  
-    "From bytes to bucks, from airtime to vibes.<br>  
-    Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, every giggle of your wallet."  
-  </p>  
+  <!-- Humor Cards -->
+  <div class="humor-cards">
+    <div class="humor-card">
+      "From bytes to bucks, from airtime to vibes.<br>
+      Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, every giggle of your wallet."
+    </div>
 
-  <p class="sub humor">  
-    "Even your phone battery cheers when you make a smart move with Bright Venturez.<br>  
-    Slow 3G? We don’t know her. Lagging downloads? Not on our watch."  
-  </p>  
+    <div class="humor-card">
+      "Your bank account might sleep, but Bright Venturez never does.<br>
+      We turn your data frustrations into dollar celebrations, one click at a time."
+    </div>
+  </div>  
 
-  <p class="sub humor">  
-    "Turn your data frustrations into dopamine. Every megabyte bought or sold is a mini victory dance."  
-  </p>  
-
-  <div class="row gap">  
+  <div class="row gap" style="margin-top:20px;">  
     <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>  
     <a class="btn ghost" href="{% url 'core:buy_data' %}">Buy Data</a>  
   </div>  
@@ -43,11 +42,6 @@
       </div>  
     {% endfor %}  
   </div>    
-
-  <!-- Call-to-Action Button to Plans -->    
-  <div style="text-align:center; margin-top:20px;">  
-    <a href="{% url 'core:plans' %}" class="btn primary">See All Plans</a>  
-  </div>  
 </section>  
 
 <!-- Footer Address & Info Links -->  
@@ -66,16 +60,16 @@
   </div>  
 </section>  
 
-<style>  
-/* Responsive logo */  
+<style>
+/* Responsive logo */
 .responsive-logo {  
   max-width: 180px;  
   width: 50%;  
   height: auto;  
   margin-bottom: 15px;  
-}  
+}
 
-/* Pulse animation */  
+/* Pulse animation */
 @keyframes pulse {  
   0% { transform: scale(1); }  
   50% { transform: scale(1.08); }  
@@ -84,20 +78,34 @@
 
 .pulse-logo {  
   animation: pulse 2.5s infinite ease-in-out;  
-}  
+}
 
+/* Humor cards */
+.humor-cards { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 15px; 
+  margin: 20px 0;
+}
+.humor-card { 
+  background: #f1f5f9; 
+  color: #111827; 
+  padding: 15px 20px; 
+  border-radius: 12px; 
+  font-size: 1rem; 
+  line-height: 1.5; 
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+}
+
+/* Responsive */
 @media (max-width: 768px) {  
-  .responsive-logo {  
-    width: 70%;  
-    max-width: 140px;  
-  }  
+  .responsive-logo { width: 70%; max-width: 140px; }  
+  .humor-card { font-size: 0.95rem; }
 }  
 
 @media (max-width: 480px) {  
-  .responsive-logo {  
-    width: 90%;  
-    max-width: 120px;  
-  }  
+  .responsive-logo { width: 90%; max-width: 120px; }  
+  .humor-card { font-size: 0.9rem; padding: 12px 15px; }
 }  
 </style>
 
