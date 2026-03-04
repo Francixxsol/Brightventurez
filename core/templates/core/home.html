@@ -1,111 +1,111 @@
 {% extends "core/base.html" %}
 {% block content %}
 
-<!-- Hero Section -->  
-<section class="card hero" style="text-align:center;">  
-  <!-- Pulsing Logo -->  
-  <img src="https://drive.google.com/uc?export=view&id=1DuB0g2KCi0qvIj86TXsYuvyrGxHevdNS"  
-       alt="Bright Venturez Logo"  
-       class="responsive-logo pulse-logo">    
-
-  <h1>Cheaper Data. Faster VTU. Data Transformed into Cash.</h1>  
-
-  <p class="sub">Buy data and airtime, convert airtime to cash, or sell your data for money. Your digital life, simplified.</p>  
-
-  <!-- Humor Cards (Dark Style) -->
-  <div class="humor-cards">
-    <div class="humor-card">
-      "From bytes to bucks, from airtime to vibes.<br>
-      Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, every giggle of your wallet."
-    </div>
-
-    <div class="humor-card">
-      "Your bank account might sleep, but Bright Venturez never does.<br>
-      We turn your data frustrations into dollar celebrations, one click at a time."
-    </div>
-  </div>  
-
-  <div class="row gap" style="margin-top:20px;">  
-    <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>  
-    <a class="btn ghost" href="{% url 'core:buy_data' %}">Buy Data</a>  
-  </div>  
-</section>  
-
-<!-- User Reviews Section -->  
-<section class="card">  
-  <h3>User Reviews</h3>  
-  <div class="carousel" id="reviewsCarousel">  
-    {% for r in reviews %}  
-      <div class="review-card">  
-        <div class="review-name">{{ r.name }}</div>  
-        <div class="review-text">{{ r.text }}</div>  
-      </div>  
-    {% endfor %}  
+<!-- Hero Section -->    
+<section class="card hero" style="text-align:center;">    
+  <!-- Pulsing Logo -->    
+  <img src="https://i.postimg.cc/3xNLBVgs/Add-Text-03-02-11-14-01.png"    
+       alt="Bright Venturez Logo"    
+       class="responsive-logo pulse-logo">      
+  
+  <h1>Cheaper Data. Faster VTU. Data Transformed into Cash.</h1>    
+  
+  <p class="sub">
+    Buy data and airtime, convert airtime to cash, or sell your data for money. 
+    Your digital life, simplified.
+  </p>    
+  
+  <!-- Humor Cards (Dark Style) -->  
+  <div class="humor-cards">  
+    <div class="humor-card">  
+      "From bytes to bucks, from airtime to vibes.<br>  
+      Bright Venturez fuels your digital soul with every click, every tap, every sigh of the network, every giggle of your wallet."  
+    </div>  
+  
+    <div class="humor-card">  
+      "Your bank account might sleep, but Bright Venturez never does.<br>  
+      We turn your data frustrations into dollar celebrations, one click at a time."  
+    </div>  
   </div>    
-</section>  
-
-<!-- Footer Address & Info Links -->  
-<section class="card footer-info">  
-  <div class="footer-address">  
-    <h4>Our Location</h4>  
-    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>  
-  </div>  
-  <div class="footer-links">  
-    <h4>Info Pages</h4>  
-    <ul>  
-      <li><a href="{% url 'core:about' %}">About Us</a></li>  
-      <li><a href="{% url 'core:services' %}">Services</a></li>  
-      <li><a href="{% url 'core:contact' %}">Contact</a></li>  
-    </ul>  
-  </div>  
-</section>  
-
+  
+  <div class="row gap" style="margin-top:20px;">    
+    <a class="btn primary" href="{% url 'core:register' %}">Get Started</a>    
+    <a class="btn ghost" href="{% url 'core:buy_data' %}">Buy Data</a>    
+  </div>    
+</section>    
+  
+<!-- User Reviews Section -->    
+<section class="card">    
+  <h3>User Reviews</h3>    
+  <div class="carousel" id="reviewsCarousel">    
+    {% for r in reviews %}    
+      <div class="review-card">    
+        <div class="review-name">{{ r.name }}</div>    
+        <div class="review-text">{{ r.text }}</div>    
+      </div>    
+    {% endfor %}    
+  </div>      
+</section>    
+  
+<!-- Footer Address & Info Links -->    
+<section class="card footer-info">    
+  <div class="footer-address">    
+    <h4>Our Location</h4>    
+    <p>Favour Estate South Core, Joseph Sarwan Tarka University Markudi (JOSTUM)</p>    
+  </div>    
+  <div class="footer-links">    
+    <h4>Info Pages</h4>    
+    <ul>    
+      <li><a href="{% url 'core:about' %}">About Us</a></li>    
+      <li><a href="{% url 'core:services' %}">Services</a></li>    
+      <li><a href="{% url 'core:contact' %}">Contact</a></li>    
+    </ul>    
+  </div>    
+</section>    
+  
 <style>
-/* Responsive logo */
-.responsive-logo {  
-  max-width: 180px;  
-  width: 50%;  
-  height: auto;  
-  margin-bottom: 15px;  
-}
-
-/* Pulse animation */
-@keyframes pulse {  
-  0% { transform: scale(1); }  
-  50% { transform: scale(1.08); }  
-  100% { transform: scale(1); }  
+.responsive-logo {    
+  max-width: 180px;    
+  width: 50%;    
+  height: auto;    
+  margin-bottom: 15px;    
 }  
 
-.pulse-logo {  
-  animation: pulse 2.5s infinite ease-in-out;  
-}
+@keyframes pulse {    
+  0% { transform: scale(1); }    
+  50% { transform: scale(1.08); }    
+  100% { transform: scale(1); }    
+}    
 
-/* Humor cards (dark hero style) */
-.humor-cards { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 15px; 
-  margin: 20px 0;
-}
-.humor-card { 
-  background: transparent; 
-  color: #f1f5f9; 
-  padding: 10px 0; 
-  font-size: 1.05rem; 
-  line-height: 1.6; 
-  opacity: 0.9;
-}
-
-/* Responsive */
-@media (max-width: 768px) {  
-  .responsive-logo { width: 70%; max-width: 140px; }  
-  .humor-card { font-size: 0.95rem; }
+.pulse-logo {    
+  animation: pulse 2.5s infinite ease-in-out;    
 }  
 
-@media (max-width: 480px) {  
-  .responsive-logo { width: 90%; max-width: 120px; }  
-  .humor-card { font-size: 0.9rem; padding: 8px 0; }
+.humor-cards {   
+  display: flex;   
+  flex-direction: column;   
+  gap: 15px;   
+  margin: 20px 0;  
 }  
-</style>
+
+.humor-card {   
+  background: transparent;   
+  color: #f1f5f9;   
+  padding: 10px 0;   
+  font-size: 1.05rem;   
+  line-height: 1.6;   
+  opacity: 0.9;  
+}  
+
+@media (max-width: 768px) {    
+  .responsive-logo { width: 70%; max-width: 140px; }    
+  .humor-card { font-size: 0.95rem; }  
+}    
+
+@media (max-width: 480px) {    
+  .responsive-logo { width: 90%; max-width: 120px; }    
+  .humor-card { font-size: 0.9rem; padding: 8px 0; }  
+}    
+</style>  
 
 {% endblock %}
